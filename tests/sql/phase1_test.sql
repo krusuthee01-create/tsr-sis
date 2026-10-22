@@ -31,6 +31,11 @@ create function pg_temp.school_day() returns date language sql as $$
   select max(d)::date from generate_series(public.today_th() - 6, public.today_th(), interval '1 day') d
   where extract(isodow from d) < 6
 $$;
+-- วันธรรมดาที่เก่ากว่ากำหนดแก้ไขย้อนหลัง (7 วัน)
+create function pg_temp.old_school_day() returns date language sql as $$
+  select max(d)::date from generate_series(public.today_th() - 30, public.today_th() - 15, interval '1 day') d
+  where extract(isodow from d) < 6
+$$;
 
 do $$ begin
   assert (select count(*) from public.staff) = 4, 'trigger สร้าง staff ไม่ครบ';
@@ -108,7 +113,7 @@ begin
   assert (select line_at is not null from public.daily_progress(d) where classroom_id = c), 'daily_progress ผิด';
 end $$;
 select pg_temp.expect_error(format('select public.save_daily(%s, %L, ''line'', ''[]'')',
-  (select id from public.classrooms where grade = 'ป.3' and room = 1), public.today_th() - 20), '%ย้อนหลัง%');
+  (select id from public.classrooms where grade = 'ป.3' and room = 1), pg_temp.old_school_day()), '%ย้อนหลัง%');
 select pg_temp.expect_error(format('select public.save_daily(%s, %L, ''line'', ''[]'')',
   (select id from public.classrooms where grade = 'ป.6' and room = 1), pg_temp.school_day()), '%เฉพาะครูที่ปรึกษา%');
 select pg_temp.expect_error('select public.import_dmc(2569, ''[]'')', '%เฉพาะผู้ดูแลระบบ%');
