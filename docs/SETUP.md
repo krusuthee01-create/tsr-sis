@@ -12,6 +12,7 @@
 3. เมื่อสร้างเสร็จ ไปที่ **SQL Editor** แล้วรันไฟล์ทีละไฟล์ตามลำดับ (คัดลอกทั้งไฟล์ไปวาง แล้วกด Run)
    1. `supabase/migrations/0001_init.sql`
    2. `supabase/migrations/0002_security_and_functions.sql`
+   3. `supabase/migrations/0003_grants.sql`
 4. ไปที่ **Project Settings › API** จดค่าเหล่านี้ไว้
    - Project URL
    - `anon` `public` key
