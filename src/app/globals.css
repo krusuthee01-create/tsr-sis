@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+/* สีหลักจากตราโรงเรียน + สีประจำโมดูล */
+@theme {
+  --color-navy-50: #EEF3FF;
+  --color-navy-100: #DCE6FF;
+  --color-navy-600: #2547A8;
+  --color-navy-700: #1E3A8A;
+  --color-navy-800: #172E6E;
+  --color-sky-brand: #0EA5E9;
+  --color-lotus: #F472B6;
+  --color-lotus-600: #DB2777;
+  --color-ink: #0F172A;
+  --color-muted: #475569;
+  --color-line: #E2E8F0;
+  --color-page: #F4F7FF;
+
+  --color-mod-attendance: #16A34A;
+  --color-mod-nutrition: #EA580C;
+  --color-mod-care: #DB2777;
+  --color-mod-grades: #7C3AED;
+  --color-mod-registry: #0284C7;
+
+  --font-sans: var(--font-noto), "Noto Sans Thai", system-ui, sans-serif;
+  --font-display: var(--font-prompt), "Prompt", var(--font-noto), sans-serif;
+  --radius-card: 1.25rem;
+}
+
+/* ปรับขนาดตัวอักษรทั้งระบบ (A− / A / A+) — ทุกขนาดใช้ rem จึงขยายตามกัน */
+html {
+  font-size: calc(16px * var(--font-scale, 1));
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display);
+}
+
+:focus-visible {
+  outline: 3px solid #38BDF8;
+  outline-offset: 2px;
+}
+
+button, a, input, select, textarea {
+  touch-action: manipulation;
+}
+
+/* ช่องกรอกข้อมูลมาตรฐาน */
+.field-input {
+  width: 100%;
+  min-height: 2.875rem;
+  border-radius: 0.75rem;
+  border: 1.5px solid #CBD5E1;
+  background: #fff;
+  padding: 0 0.875rem;
+  font-size: 1rem;
+}
+textarea.field-input {
+  padding: 0.625rem 0.875rem;
+  min-height: 5rem;
+}
+.field-input:focus {
+  border-color: #38BDF8;
+  outline: 3px solid #BAE6FD;
+  outline-offset: 0;
+}
+.field-input[aria-invalid="true"] {
+  border-color: #DC2626;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+.data-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-muted);
+  background: #F8FAFC;
+  padding: 0.625rem 0.75rem;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-line);
+}
+.data-table td {
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid #F1F5F9;
+}
+.data-table tr:hover td {
+  background: #F8FAFC;
+}
+
+/* การพิมพ์: ใช้ฟอนต์ Sarabun (แบบเดียวกับ TH Sarabun New) ซ่อนเมนูและปุ่ม */
+@media print {
+  html { font-size: 14px; }
+  body { background: #fff; font-family: var(--font-sarabun), "TH Sarabun New", "Sarabun", sans-serif; }
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  .print-card { box-shadow: none !important; border: 0 !important; padding: 0 !important; }
+  main { padding: 0 !important; margin: 0 !important; }
+  .data-table { font-size: 12pt; }
+  .data-table th, .data-table td { border: 1px solid #94A3B8; padding: 4px 6px; }
+  @page { size: A4; margin: 1.5cm; }
+}
+.print-only { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
