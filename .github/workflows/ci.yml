@@ -26,7 +26,12 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - name: ทดสอบฐานข้อมูลและสิทธิ์ (RLS)
-        run: tests/sql/run.sh -h localhost -U postgres
+        run: |
+          set -o pipefail
+          tests/sql/run.sh -h localhost -U postgres 2>&1 | tee sql-test.log || {
+            grep -E "ERROR|error|FATAL" sql-test.log | head -5 | sed 's/^/::error::/'
+            exit 1
+          }
         env:
           PGPASSWORD: postgres
       - run: npm run build
