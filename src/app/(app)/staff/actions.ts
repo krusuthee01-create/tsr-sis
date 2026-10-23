@@ -52,3 +52,32 @@ export async function resetPassword(staffId: string, password: string): Promise<
   if (error) return { ok: false, error: error.message };
   return { ok: true };
 }
+
+/**
+ * ลบครูออกจากทะเบียนถาวร พร้อมบัญชีเข้าระบบ
+ * ลบได้เฉพาะครูที่ยังไม่เคยบันทึกข้อมูลใด (เช่น บัญชีทดสอบ หรือบัญชีที่สมัครผิด)
+ * ครูที่เคยเช็กชื่อแล้วให้ใช้ "ปิดการใช้งาน" แทน เพื่อเก็บประวัติไว้
+ */
+export async function deleteStaff(staffId: string): Promise<Result> {
+  const denied = await assertAdmin();
+  if (denied) return { ok: false, error: denied };
+  const profile = await getProfile();
+  if (profile?.id === staffId) return { ok: false, error: "ลบบัญชีของตัวเองไม่ได้" };
+
+  const sb = await supabaseServer();
+  const { data: staff } = await sb.from("staff").select("user_id").eq("id", staffId).maybeSingle();
+  if (!staff) return { ok: false, error: "ไม่พบครูท่านนี้" };
+
+  const { error } = await sb.from("staff").delete().eq("id", staffId);
+  if (error) {
+    return { ok: false, error: error.code === "23503"
+      ? "ครูท่านนี้มีประวัติการบันทึกข้อมูลแล้ว ลบไม่ได้ — ใช้ \"ปิดการใช้งานบัญชี\" แทน"
+      : error.message };
+  }
+  if (staff.user_id) {
+    const { error: authErr } = await supabaseAdmin().auth.admin.deleteUser(staff.user_id);
+    if (authErr) return { ok: false, error: "ลบจากทะเบียนแล้ว แต่ลบบัญชีเข้าระบบไม่สำเร็จ: " + authErr.message };
+  }
+  revalidatePath("/staff");
+  return { ok: true };
+}

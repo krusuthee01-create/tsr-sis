@@ -7,7 +7,7 @@ import { supabaseBrowser } from "@/lib/supabase/client";
 import { Button, Field, Badge } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { ROLES } from "@/lib/domain";
-import { createLoginAccount, resetPassword } from "./actions";
+import { createLoginAccount, deleteStaff, resetPassword } from "./actions";
 
 const PREFIXES = ["นาย", "นาง", "นางสาว", "ว่าที่ร้อยตรี", "ดร."];
 const POSITIONS = ["ผู้อำนวยการ", "รองผู้อำนวยการ", "ครู", "ครูผู้ช่วย", "พนักงานราชการ", "ครูอัตราจ้าง", "ครูพี่เลี้ยง", "เจ้าหน้าที่ธุรการ", "บุคลากรอื่น"];
@@ -135,6 +135,14 @@ export function RoleEditor({ staffId, roles, active, isSelf }: { staffId: string
     toast("บันทึกบทบาทแล้ว");
     router.refresh();
   }
+  async function remove() {
+    if (!confirm("ลบครูท่านนี้และบัญชีเข้าระบบถาวร? ย้อนกลับไม่ได้")) return;
+    const res = await deleteStaff(staffId);
+    if (!res.ok) return toast(res.error, "error");
+    toast("ลบแล้ว");
+    router.push("/staff");
+    router.refresh();
+  }
   async function toggleActive() {
     if (!confirm(active ? "ปิดการใช้งานบัญชีนี้? (ข้อมูลเดิมยังอยู่ครบ)" : "เปิดใช้งานบัญชีนี้อีกครั้ง?")) return;
     const { error } = await supabaseBrowser().from("staff").update({ active: !active, approved: true }).eq("id", staffId);
@@ -151,7 +159,13 @@ export function RoleEditor({ staffId, roles, active, isSelf }: { staffId: string
         </label>
       ))}
       <p className="text-sm text-muted">ครูที่ปรึกษาและครูประจำวิชาไม่ต้องติ๊ก ระบบรู้จากการมอบหมายห้องและวิชา</p>
-      {!isSelf && <Button variant={active ? "secondary" : "success"} size="sm" onClick={toggleActive} className="self-start">{active ? "ปิดการใช้งานบัญชี" : "เปิดใช้งานบัญชี"}</Button>}
+      {!isSelf && (
+        <div className="flex flex-wrap gap-2">
+          <Button variant={active ? "secondary" : "success"} size="sm" onClick={toggleActive}>{active ? "ปิดการใช้งานบัญชี" : "เปิดใช้งานบัญชี"}</Button>
+          <Button variant="danger" size="sm" onClick={remove}><Trash size={18} /> ลบถาวร</Button>
+        </div>
+      )}
+      {!isSelf && <p className="text-sm text-muted">ลบถาวรได้เฉพาะบัญชีที่ยังไม่เคยบันทึกข้อมูล (เช่น บัญชีทดสอบ) ครูที่ย้ายหรือลาออกให้ใช้ปิดการใช้งาน เพื่อเก็บประวัติไว้</p>}
     </div>
   );
 }
