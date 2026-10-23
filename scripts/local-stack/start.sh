@@ -60,9 +60,8 @@ nohup node proxy.mjs > "$DIR/proxy.log" 2>&1 &
 sleep 2
 node jwt.mjs > "$DIR/keys.env"
 . "$DIR/keys.env"
-echo "NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321"
-echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON"
-echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE"
+printf 'NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321\nNEXT_PUBLIC_SUPABASE_ANON_KEY=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\n' "$ANON" "$SERVICE" > "$DIR/env.local"
+echo "พร้อมใช้งาน: คัดลอก $DIR/env.local ไปเป็น .env.local ของโปรเจกต์"
 # ผู้ใช้ทดสอบ: admin.test / krusomjai รหัสผ่าน pass1234
 for n in admin.test krusomjai; do
   curl -s -o /dev/null -X POST http://127.0.0.1:54321/auth/v1/admin/users -H "apikey: $SERVICE" -H "Authorization: Bearer $SERVICE" \

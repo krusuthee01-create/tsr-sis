@@ -156,3 +156,45 @@ test("นำเข้ารายชื่อครูจาก Excel", async ()
   assert.equal(changes[1].kind, "new");
   assert.equal(toStaffRecord(r.rows[1]).email, undefined);
 });
+
+test("ภาวะโภชนาการ: แปลผลและคำเตือน", async () => {
+  const { classify, refMaps, ageInMonths, parseMeasure, measureWarnings, monthlyRounds } = await import("../src/lib/nutrition.ts");
+  assert.equal(ageInMonths("2020-09-15", "2026-10-15"), 73);
+  assert.equal(ageInMonths("2020-09-16", "2026-10-15"), 72);
+  const { ageRef, heightRef } = refMaps(
+    [{ sex: 1, age_months: 73, w_m2: 15.6, w_m15: 16.7, w_p15: 25.6, w_p2: 27.6, h_m2: 105.9, h_m15: 108.2, h_p15: 121.9, h_p2: 124.2 }],
+    [{ sex: 1, height_cm: 115, m2: 16, m15: 16.8, p15: 22.2, p2: 23.2, p3: 25.4 }],
+  );
+  assert.deepEqual(classify(1, 73, 21.6, 115, ageRef, heightRef), { wfa: 3, hfa: 3, wfh: 3 });
+  assert.deepEqual(classify(1, 73, 15.5, 100, ageRef, heightRef), { wfa: 1, hfa: 1, wfh: null });
+  assert.equal(classify(1, 73, 27.6, 114.6, ageRef, heightRef).wfa, 4);
+  assert.equal(classify(1, 73, 26, 114.6, ageRef, heightRef).wfh, 6);
+  assert.equal(classify(1, 73, 24, 115.4, ageRef, heightRef).wfh, 5);
+  assert.equal(parseMeasure("18,5"), 18.5);
+  assert.ok(Number.isNaN(parseMeasure("18.5.1") as number));
+  assert.equal(parseMeasure(" "), null);
+  assert.equal(measureWarnings(500, 110, undefined, 5)[0].level, "error");
+  assert.match(measureWarnings(26, 115, { weight: 20, height: 114 }, 5)[0].text, /ต่างจากครั้งก่อน 6.0/);
+  assert.equal(measureWarnings(20, 115, { weight: 20, height: 114 }, 5).length, 0);
+  const rounds = monthlyRounds([{ start_date: "2026-05-16", end_date: "2026-10-10" }, { start_date: "2026-11-02", end_date: "2027-03-31" }]);
+  assert.equal(rounds.length, 11);
+  assert.deepEqual(rounds[0], { name: "พ.ค. 2569", start_date: "2026-05-16", end_date: "2026-05-31" });
+  assert.equal(rounds.at(-1)?.name, "มี.ค. 2570");
+});
+
+test("อ่านตารางเกณฑ์อ้างอิงรูปแบบโปรแกรม ปพ.5", async () => {
+  const { parseAgeSheet, parseHeightSheet } = await import("../src/lib/growth-ref.ts");
+  const age = parseAgeSheet([
+    ["code", "median_wt", "sd_wt", "sd_2_wt", "sd_15_wt", "sd15_wt", "sd2_wt", "median_ht", "sd_ht", "sd_2_ht", "sd_15_ht", "sd15_ht", "sd2_ht"],
+    ["173", 21.6, 3, 15.6, 16.7, 25.6, 27.6, 115.05, 4.575, 105.9, 108.2, 121.9, 124.2],
+    ["2227", 52.1, 5, 40, 42, 60, 63, 157, 5, 147, 149.5, 164.5, 167],
+  ]);
+  assert.equal(age.error, undefined);
+  assert.deepEqual([age.rows[0].sex, age.rows[0].age_months, age.rows[1].sex, age.rows[1].age_months], [1, 73, 2, 227]);
+  const bad = parseAgeSheet([["code", "median_wt", "sd_2_wt", "sd_15_wt", "sd15_wt", "sd2_wt", "median_ht", "sd_2_ht", "sd_15_ht", "sd15_ht", "sd2_ht"], ["173", 21, 30, 16, 25, 27, 115, 105, 108, 121, 124]]);
+  assert.equal(bad.error, undefined);
+  assert.match(bad.warnings[0] ?? "", /ไม่เรียง/);
+  const ht = parseHeightSheet([["code", "median", "sd", "sd_2", "sd_15", "sd15", "sd2", "sd3"], ["1115", 19.6, 1.8, 16, 16.8, 22.2, 23.2, 25.4]]);
+  assert.deepEqual([ht.rows[0].sex, ht.rows[0].height_cm, ht.rows[0].p3], [1, 115, 25.4]);
+  assert.match(parseHeightSheet([["ไม่มี", "หัว"]]).error ?? "", /code/);
+});

@@ -63,6 +63,8 @@ export const getSettings = cache(async () => {
     current_year: number | null;
     edit_window_days: number;
     attendance_risk_percent: number;
+    growth_reference_name: string;
+    nutrition_alert_kg: number;
   };
 });
 

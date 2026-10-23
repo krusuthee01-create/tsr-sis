@@ -52,6 +52,8 @@ button, a, input, select, textarea {
   touch-action: manipulation;
 }
 
+/* ชิ้นส่วนมาตรฐาน — อยู่ใน layer components เพื่อให้คลาส utility (เช่น w-24) กำหนดทับได้ */
+@layer components {
 /* ช่องกรอกข้อมูลมาตรฐาน */
 .field-input {
   width: 100%;
@@ -99,6 +101,8 @@ textarea.field-input {
 }
 .data-table tr:hover td {
   background: #F8FAFC;
+}
+
 }
 
 /* การพิมพ์: ใช้ฟอนต์ Sarabun (แบบเดียวกับ TH Sarabun New) ซ่อนเมนูและปุ่ม */

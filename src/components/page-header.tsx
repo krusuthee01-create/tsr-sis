@@ -5,6 +5,7 @@ import { HelpButton } from "./help";
 export const MODULE_COLORS = {
   home: "#1E3A8A",
   attendance: "#16A34A",
+  nutrition: "#EA580C",
   registry: "#0284C7",
   staff: "#0369A1",
   reports: "#7C3AED",

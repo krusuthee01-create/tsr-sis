@@ -8,7 +8,7 @@ import { supabaseBrowser } from "./supabase/client";
 
 export type QueueItem = {
   key: string;
-  rpc: "save_daily" | "save_subject_attendance";
+  rpc: "save_daily" | "save_subject_attendance" | "save_measurements";
   args: Record<string, unknown>;
   label: string;
   createdAt: number;

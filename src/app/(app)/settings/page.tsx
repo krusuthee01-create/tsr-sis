@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card, LinkTabs, SectionTitle } from "@/components/ui";
 import { formatThaiDate, todayISO } from "@/lib/thai-date";
 import { SchoolForm, YearsEditor, TermsEditor, HolidaysEditor, PeriodsEditor, SubjectsEditor } from "./settings-forms";
+import { GrowthRefEditor } from "./growth-ref-editor";
 
 export const metadata = { title: "ตั้งค่าระบบ" };
 
@@ -13,7 +14,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const [profile, settings] = await Promise.all([getProfile(), getSettings()]);
   if (!can(profile, "admin")) redirect("/");
-  const tab = ["school", "calendar", "periods", "subjects"].includes(sp.s ?? "") ? sp.s! : "overview";
+  const tab = ["school", "calendar", "periods", "subjects", "growth"].includes(sp.s ?? "") ? sp.s! : "overview";
   const year = Number(sp.y) || settings?.current_year || 0;
 
   const tabs = [
@@ -22,6 +23,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     { id: "calendar", label: "ปีการศึกษา / ปฏิทิน", href: "/settings?s=calendar" },
     { id: "periods", label: "คาบเรียน", href: "/settings?s=periods" },
     { id: "subjects", label: "รายวิชา", href: "/settings?s=subjects" },
+    { id: "growth", label: "เกณฑ์โภชนาการ", href: "/settings?s=growth" },
   ];
 
   return (
@@ -33,6 +35,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       {tab === "calendar" && <Calendar year={year} currentYear={settings?.current_year ?? null} />}
       {tab === "periods" && <Periods />}
       {tab === "subjects" && <Subjects />}
+      {tab === "growth" && <Growth />}
     </div>
   );
 }
@@ -121,4 +124,19 @@ async function Subjects() {
   const sb = await supabaseServer();
   const { data } = await sb.from("subjects").select("id, code, name, grade, hours_per_year, learning_area").order("code");
   return <Card><SectionTitle>รายวิชา</SectionTitle><SubjectsEditor subjects={data ?? []} /></Card>;
+}
+
+async function Growth() {
+  const sb = await supabaseServer();
+  const settings = await getSettings();
+  const [{ count: a }, { count: h }] = await Promise.all([
+    sb.from("growth_ref_age").select("sex", { count: "exact", head: true }),
+    sb.from("growth_ref_height").select("sex", { count: "exact", head: true }),
+  ]);
+  return (
+    <Card>
+      <SectionTitle>เกณฑ์อ้างอิงการเจริญเติบโต</SectionTitle>
+      <GrowthRefEditor name={settings?.growth_reference_name ?? "-"} ageCount={a ?? 0} heightCount={h ?? 0} alertKg={Number(settings?.nutrition_alert_kg ?? 5)} />
+    </Card>
+  );
 }

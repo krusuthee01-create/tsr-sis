@@ -41,8 +41,8 @@ scripts/local-stack/   Supabase จำลองในเครื่องสำ
 npm install
 npm test                 # ทดสอบฟังก์ชัน
 npm run test:sql         # ทดสอบฐานข้อมูล (ต้องมี PostgreSQL ที่ localhost)
-scripts/local-stack/start.sh > .env.local.tmp   # เปิด Supabase จำลอง (PostgreSQL ที่ 127.0.0.1:54329)
-tail -3 .env.local.tmp > .env.local && npm run build && npm start
+scripts/local-stack/start.sh          # เปิด Supabase จำลอง (PostgreSQL ที่ 127.0.0.1:54329)
+cp /tmp/tsr-stack/env.local .env.local && npm run build && npm start
 python3 tests/e2e/make-fake-dmc.py /tmp/tsr-fake-dmc.xlsx
 npm run test:e2e         # ต้องติดตั้ง playwright
 ```

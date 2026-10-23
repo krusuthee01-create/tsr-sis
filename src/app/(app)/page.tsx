@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle, Drop, Tooth, ClipboardText, Warning, CaretRight, Chalkboard, GearSix } from "@phosphor-icons/react/dist/ssr";
+import { CheckCircle, Drop, Tooth, ClipboardText, Warning, CaretRight, Chalkboard, GearSix, Scales } from "@phosphor-icons/react/dist/ssr";
 import { can, getProfile, getSettings, supabaseServer } from "@/lib/supabase/server";
 import { formatThaiDate, todayISO, addDays, formatTime } from "@/lib/thai-date";
 import { classroomName, fullName, shortPrefix } from "@/lib/domain";
@@ -24,7 +24,15 @@ export default async function HomePage() {
   ]);
   const progress = (progressData ?? []) as Progress[];
   const myRooms = (profile?.homerooms ?? []).map((h) => ({ ...h, p: progress.find((p) => p.classroom_id === h.classroom_id) }));
-  const alerts = await consecutiveAbsences(sb, myRooms.map((r) => r.classroom_id), today);
+  const [alerts, { data: openRound }] = await Promise.all([
+    consecutiveAbsences(sb, myRooms.map((r) => r.classroom_id), today),
+    sb.from("measurement_rounds").select("id, name, end_date").lte("start_date", today).gte("end_date", today).limit(1).maybeSingle(),
+  ]);
+  const measured = new Map<number, number>();
+  if (openRound && myRooms.length) {
+    const { data: m } = await sb.from("measurements").select("classroom_id").eq("round_id", openRound.id).in("classroom_id", myRooms.map((r) => r.classroom_id));
+    for (const r of m ?? []) measured.set(r.classroom_id, (measured.get(r.classroom_id) ?? 0) + 1);
+  }
   const firstName = profile ? `${shortPrefix(profile.prefix)}${profile.first_name}` : "";
 
   return (
@@ -56,6 +64,21 @@ export default async function HomePage() {
       )}
 
       {myRooms.map((r) => <TodayCard key={r.classroom_id} room={r} p={r.p} schoolDay={!!schoolDay} />)}
+
+      {openRound && myRooms.map((r) => {
+        const left = (r.p?.students ?? 0) - (measured.get(r.classroom_id) ?? 0);
+        return left > 0 && (
+          <Link key={`n${r.classroom_id}`} href={`/nutrition?r=${openRound.id}&c=${r.classroom_id}`}
+            className="flex items-center gap-3 rounded-[var(--radius-card)] border-2 border-dashed border-orange-300 bg-white p-4 hover:bg-orange-50">
+            <Scales size={36} weight="duotone" className="shrink-0 text-orange-600" />
+            <span className="flex-1">
+              <span className="block font-semibold">ชั่งน้ำหนัก/วัดส่วนสูง {openRound.name} · {classroomName(r)}</span>
+              <span className="text-sm text-orange-900">เหลือ {left} คน · ภายใน {formatThaiDate(openRound.end_date)}</span>
+            </span>
+            <CaretRight size={20} className="text-orange-700" />
+          </Link>
+        );
+      })}
 
       {alerts.length > 0 && (
         <Card className="bg-pink-50">

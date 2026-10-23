@@ -7,6 +7,7 @@ import { Badge, Card, LinkTabs, SectionTitle, Stat } from "@/components/ui";
 import { ATTENDANCE_STATUSES, classroomName, formatCitizenId, fullName, STUDENT_STATUSES } from "@/lib/domain";
 import { ageOf, formatThaiDate, formatThaiDateTime, monthRange, parseISO, THAI_MONTHS, todayISO, weekdayOf } from "@/lib/thai-date";
 import { attendancePercent } from "@/lib/reports";
+import { HFA, TONE_STYLE, WFA, WFH } from "@/lib/nutrition";
 import { ExtraForm, AdminActions } from "./student-actions";
 
 export const metadata = { title: "ประวัตินักเรียน" };
@@ -26,7 +27,7 @@ export default async function StudentPage({ params, searchParams }: { params: Pr
   if (!/^[0-9a-f-]{36}$/.test(id)) notFound();
   const sb = await supabaseServer();
   const [profile, settings] = await Promise.all([getProfile(), getSettings()]);
-  const tab = sp.tab === "attendance" || sp.tab === "history" ? sp.tab : "info";
+  const tab = sp.tab === "attendance" || sp.tab === "history" || sp.tab === "nutrition" ? sp.tab : "info";
 
   const [{ data: student }, { data: enrollData }] = await Promise.all([
     sb.from("students").select("*").eq("id", id).maybeSingle(),
@@ -71,6 +72,7 @@ export default async function StudentPage({ params, searchParams }: { params: Pr
         <LinkTabs current={tab} tabs={[
           { id: "info", label: "ข้อมูลทั่วไป", href: base },
           { id: "attendance", label: "การมาเรียน", href: `${base}?tab=attendance` },
+          { id: "nutrition", label: "โภชนาการ", href: `${base}?tab=nutrition` },
           { id: "history", label: "ห้องเรียนและสถานะ", href: `${base}?tab=history` },
         ]} />
       </div>
@@ -79,6 +81,7 @@ export default async function StudentPage({ params, searchParams }: { params: Pr
         <Card className="text-muted">ท่านเห็นได้เฉพาะชื่อและการมาเรียนของนักเรียนคนนี้ ข้อมูลส่วนตัวและผู้ปกครองเปิดให้เฉพาะครูที่ปรึกษา ผู้บริหาร และงานแนะแนว (ตาม PDPA)</Card>
       ))}
       {tab === "attendance" && <AttendanceTab studentId={id} month={sp.m} base={base} />}
+      {tab === "nutrition" && <NutritionTab studentId={id} />}
       {tab === "history" && <HistoryTab studentId={id} enrollments={enrollments} canSeeHistory={!!s} />}
     </div>
   );
@@ -243,6 +246,60 @@ async function HistoryTab({ studentId, enrollments, canSeeHistory }: { studentId
             ))}
           </ul>
         )}
+      </Card>
+    </div>
+  );
+}
+
+function NChip({ map, v }: { map: Record<number, { short: string; tone: keyof typeof TONE_STYLE }>; v: number | null }) {
+  if (!v) return <span className="text-slate-400">-</span>;
+  const t = TONE_STYLE[map[v].tone];
+  return <span className="whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-bold" style={{ background: t.bg, color: t.fg }}>{map[v].short}</span>;
+}
+
+async function NutritionTab({ studentId }: { studentId: string }) {
+  const sb = await supabaseServer();
+  const { data } = await sb.from("measurements")
+    .select("measured_on, weight, height, age_months, wfa, hfa, wfh, measurement_rounds(name, start_date)")
+    .eq("student_id", studentId).order("measured_on", { ascending: false });
+  const rows = (data ?? []) as unknown as { measured_on: string; weight: number | null; height: number | null; age_months: number | null; wfa: number | null; hfa: number | null; wfh: number | null; measurement_rounds: { name: string } }[];
+  if (!rows.length) return <Card className="text-muted">ยังไม่มีข้อมูลน้ำหนัก/ส่วนสูง (หรือท่านไม่มีสิทธิ์ดูข้อมูลสุขภาพของนักเรียนคนนี้)</Card>;
+  const latest = rows[0];
+  const chart = [...rows].reverse().slice(-10);
+  const max = Math.max(...chart.map((r) => r.weight ?? 0), 1);
+  return (
+    <div className="grid gap-3 md:grid-cols-[1fr_1.4fr]">
+      <Card className="flex flex-col gap-3">
+        <SectionTitle>ล่าสุด · {latest.measurement_rounds.name}</SectionTitle>
+        <div className="grid grid-cols-2 gap-2">
+          <Stat label="น้ำหนัก (กก.)" value={latest.weight ?? "-"} tone="orange" />
+          <Stat label="ส่วนสูง (ซม.)" value={latest.height ?? "-"} tone="blue" />
+        </div>
+        <dl className="flex flex-col gap-2 text-sm">
+          <div className="flex justify-between"><dt className="text-muted">น้ำหนักตามส่วนสูง</dt><dd><NChip map={WFH} v={latest.wfh} /></dd></div>
+          <div className="flex justify-between"><dt className="text-muted">น้ำหนักตามอายุ</dt><dd><NChip map={WFA} v={latest.wfa} /></dd></div>
+          <div className="flex justify-between"><dt className="text-muted">ส่วนสูงตามอายุ</dt><dd><NChip map={HFA} v={latest.hfa} /></dd></div>
+        </dl>
+      </Card>
+      <Card>
+        <SectionTitle>น้ำหนักแต่ละรอบ (กก.)</SectionTitle>
+        <div className="flex h-36 items-end gap-2" role="img" aria-label="กราฟน้ำหนักแต่ละรอบ">
+          {chart.map((r) => (
+            <div key={r.measured_on} className="flex flex-1 flex-col items-center gap-1">
+              <span className="text-[0.6875rem] text-slate-700">{r.weight ?? "-"}</span>
+              <div className="w-full max-w-9 rounded-t-lg bg-orange-400" style={{ height: `${Math.max(6, ((r.weight ?? 0) / max) * 100)}px` }} />
+              <span className="text-[0.6875rem] text-muted">{r.measurement_rounds.name.split(" ")[0]}</span>
+            </div>
+          ))}
+        </div>
+        <div className="table-wrap mt-3">
+          <table className="data-table">
+            <thead><tr><th>รอบ</th><th>วันที่</th><th>น้ำหนัก</th><th>ส่วนสูง</th><th>น้ำหนัก/ส่วนสูง</th></tr></thead>
+            <tbody>{rows.map((r) => (
+              <tr key={r.measured_on + r.measurement_rounds.name}><td>{r.measurement_rounds.name}</td><td>{formatThaiDate(r.measured_on)}</td><td>{r.weight ?? "-"}</td><td>{r.height ?? "-"}</td><td><NChip map={WFH} v={r.wfh} /></td></tr>
+            ))}</tbody>
+          </table>
+        </div>
       </Card>
     </div>
   );
