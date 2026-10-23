@@ -104,7 +104,7 @@ async function Calendar({ year, currentYear }: { year: number; currentYear: numb
   ]);
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Card><SectionTitle>ปีการศึกษา</SectionTitle><YearsEditor years={(years ?? []).map((y) => y.year)} current={currentYear} selected={year} /></Card>
+      <Card><SectionTitle>ปีการศึกษา</SectionTitle><YearsEditor key={(years ?? []).length} years={(years ?? []).map((y) => y.year)} current={currentYear} selected={year} /></Card>
       <Card><SectionTitle>ภาคเรียน ปี {year || "-"}</SectionTitle>{year ? <TermsEditor year={year} terms={terms ?? []} /> : <p className="text-muted">เพิ่มปีการศึกษาก่อน</p>}</Card>
       <Card className="lg:col-span-2"><SectionTitle>วันหยุดของโรงเรียน ปีการศึกษา {year || "-"}</SectionTitle><HolidaysEditor holidays={holidays ?? []} /></Card>
     </div>
