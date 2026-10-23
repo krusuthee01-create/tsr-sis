@@ -17,6 +17,6 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           code=$(curl -s -o /dev/null -w "%{http_code}" "$SUPABASE_URL/rest/v1/grade_levels?select=code&limit=1" \
-            -H "apikey: $SUPABASE_ANON_KEY" -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+            -H "apikey: $SUPABASE_ANON_KEY")
           echo "HTTP $code"
           test "$code" = "200"
