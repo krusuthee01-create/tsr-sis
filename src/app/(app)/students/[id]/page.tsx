@@ -8,7 +8,9 @@ import { ATTENDANCE_STATUSES, classroomName, formatCitizenId, fullName, STUDENT_
 import { ageOf, formatThaiDate, formatThaiDateTime, monthRange, parseISO, THAI_MONTHS, todayISO, weekdayOf } from "@/lib/thai-date";
 import { attendancePercent } from "@/lib/reports";
 import { HFA, TONE_STYLE, WFA, WFH } from "@/lib/nutrition";
+import { DOMAINS, EQ_DOMAINS, EQ_LEVELS, INFORMANTS, INTERVENTION_DOMAINS, LEVELS, SDQ_SCALES } from "@/lib/care";
 import { ExtraForm, AdminActions } from "./student-actions";
+import { InterventionForm, InterventionStatus } from "./intervention-form";
 
 export const metadata = { title: "ประวัตินักเรียน" };
 
@@ -27,7 +29,7 @@ export default async function StudentPage({ params, searchParams }: { params: Pr
   if (!/^[0-9a-f-]{36}$/.test(id)) notFound();
   const sb = await supabaseServer();
   const [profile, settings] = await Promise.all([getProfile(), getSettings()]);
-  const tab = sp.tab === "attendance" || sp.tab === "history" || sp.tab === "nutrition" ? sp.tab : "info";
+  const tab = sp.tab === "attendance" || sp.tab === "history" || sp.tab === "nutrition" || sp.tab === "care" ? sp.tab : "info";
 
   const [{ data: student }, { data: enrollData }] = await Promise.all([
     sb.from("students").select("*").eq("id", id).maybeSingle(),
@@ -73,6 +75,7 @@ export default async function StudentPage({ params, searchParams }: { params: Pr
           { id: "info", label: "ข้อมูลทั่วไป", href: base },
           { id: "attendance", label: "การมาเรียน", href: `${base}?tab=attendance` },
           { id: "nutrition", label: "โภชนาการ", href: `${base}?tab=nutrition` },
+          ...(s ? [{ id: "care", label: "ดูแลช่วยเหลือ", href: `${base}?tab=care` }] : []),
           { id: "history", label: "ห้องเรียนและสถานะ", href: `${base}?tab=history` },
         ]} />
       </div>
@@ -82,6 +85,8 @@ export default async function StudentPage({ params, searchParams }: { params: Pr
       ))}
       {tab === "attendance" && <AttendanceTab studentId={id} month={sp.m} base={base} />}
       {tab === "nutrition" && <NutritionTab studentId={id} />}
+      {tab === "care" && s && current && <CareTab studentId={id} classroomId={current.classroom_id} year={settings?.current_year ?? current.year}
+        canEdit={can(profile, "admin") || can(profile, "guidance") || !!profile?.homerooms.some((h) => h.classroom_id === current.classroom_id && h.kind === "homeroom")} />}
       {tab === "history" && <HistoryTab studentId={id} enrollments={enrollments} canSeeHistory={!!s} />}
     </div>
   );
@@ -300,6 +305,108 @@ async function NutritionTab({ studentId }: { studentId: string }) {
             ))}</tbody>
           </table>
         </div>
+      </Card>
+    </div>
+  );
+}
+
+function LevelChip({ v }: { v: number | null | undefined }) {
+  if (!v) return <span className="text-muted">-</span>;
+  return <span className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ background: LEVELS[v].bg, color: LEVELS[v].fg }}>{LEVELS[v].label}</span>;
+}
+
+async function CareTab({ studentId, classroomId, year, canEdit }: { studentId: string; classroomId: number; year: number; canEdit: boolean }) {
+  const sb = await supabaseServer();
+  const [{ data: sc }, { data: sdq }, { data: eq }, { data: visits }, { data: ivs }] = await Promise.all([
+    sb.from("screenings").select("learning, health, economic, safety, behavior, overall, talent, notes, confirmed_at").eq("student_id", studentId).eq("year", year).maybeSingle(),
+    sb.from("sdq_results").select("term, informant, emotional, conduct, hyperactivity, peer, prosocial, total, levels, level, recorded_at").eq("student_id", studentId).eq("year", year).order("term", { ascending: false }),
+    sb.from("eq_results").select("term, version, good, smart, happy, levels").eq("student_id", studentId).eq("year", year).order("term", { ascending: false }),
+    sb.from("home_visits").select("id, visit_date, monthly_income, household_size, safety_risk, data").eq("student_id", studentId).order("visit_date", { ascending: false }),
+    sb.from("interventions").select("id, action_date, domain, activity, responsible, result, status").eq("student_id", studentId).order("action_date", { ascending: false }),
+  ]);
+  const screening = sc as (Record<string, number> & { talent: string | null; notes: Record<string, string>; confirmed_at: string }) | null;
+  const sdqRows = (sdq ?? []) as unknown as ({ term: number; informant: string; total: number; level: number | null; levels: Record<string, number | null>; recorded_at: string } & Record<string, number>)[];
+  const eqRows = (eq ?? []) as unknown as { term: number; version: string; good: number; smart: number; happy: number; levels: Record<string, number | null> }[];
+  const visitRows = (visits ?? []) as unknown as { id: string; visit_date: string; monthly_income: number | null; household_size: number | null; safety_risk: boolean; data: { teacher_summary?: string; needs?: string[] } }[];
+  const ivRows = (ivs ?? []) as { id: string; action_date: string; domain: string; activity: string; responsible: string | null; result: string | null; status: string }[];
+  const worst = screening ? DOMAINS.filter((d) => screening[d.key] >= 2).sort((a, b) => screening[b.key] - screening[a.key])[0]?.key : undefined;
+
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      <Card>
+        <SectionTitle action={screening ? <LevelChip v={screening.overall} /> : undefined}>ผลคัดกรองปี {year}</SectionTitle>
+        {screening ? (
+          <dl className="flex flex-col gap-2 text-sm">
+            {DOMAINS.map((d) => (
+              <div key={d.key} className="flex items-start justify-between gap-3">
+                <dt className="text-muted">{d.label}{screening.notes?.[d.key] && <span className="block text-xs">เหตุผล: {screening.notes[d.key]}</span>}</dt>
+                <dd><LevelChip v={screening[d.key]} /></dd>
+              </div>
+            ))}
+            {screening.talent && <div className="flex justify-between gap-3"><dt className="text-muted">ความสามารถพิเศษ</dt><dd className="font-semibold">{screening.talent}</dd></div>}
+            <p className="text-xs text-muted">ยืนยัน {formatThaiDateTime(screening.confirmed_at)}</p>
+          </dl>
+        ) : <p className="text-muted">ยังไม่ได้ยืนยันผลคัดกรอง (ทำที่เมนูดูแลช่วยเหลือ › คัดกรอง)</p>}
+      </Card>
+
+      <Card>
+        <SectionTitle>SDQ / EQ</SectionTitle>
+        {!sdqRows.length && !eqRows.length && <p className="text-muted">ยังไม่มีผลประเมิน</p>}
+        <ul className="flex flex-col gap-2 text-sm">
+          {sdqRows.map((r) => (
+            <li key={`${r.term}${r.informant}`} className="rounded-xl bg-slate-50 p-2.5">
+              <div className="mb-1 flex items-center justify-between gap-2"><span className="font-semibold">SDQ {INFORMANTS[r.informant]} · ภาค {r.term}</span><LevelChip v={r.level} /></div>
+              <p className="text-xs text-muted">รวมปัญหา {r.total} · {SDQ_SCALES.map((x) => `${x.label.replace("ด้าน", "")} ${r[x.key]}${r.levels?.[x.key] && r.levels[x.key]! >= 2 && x.key !== "prosocial" ? ` (${LEVELS[r.levels[x.key]!].label})` : ""}`).join(" · ")}</p>
+            </li>
+          ))}
+          {eqRows.map((r) => (
+            <li key={`eq${r.term}`} className="rounded-xl bg-slate-50 p-2.5">
+              <span className="font-semibold">EQ ฉบับ {r.version} ปี · ภาค {r.term}</span>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {EQ_DOMAINS.map((d) => {
+                  const lv = r.levels?.[d.key];
+                  return <span key={d.key} className="rounded-full px-2.5 py-1 text-xs font-semibold" style={lv != null ? { background: EQ_LEVELS[lv].bg, color: EQ_LEVELS[lv].fg } : { background: "#F1F5F9" }}>{d.label} {r[d.key]}{lv != null ? ` · ${EQ_LEVELS[lv].label}` : ""}</span>;
+                })}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </Card>
+
+      <Card className="md:col-span-2">
+        <SectionTitle action={canEdit ? <Link href={`/care/visit/${studentId}`} className="text-sm font-semibold text-pink-700">บันทึกเยี่ยมบ้าน ›</Link> : undefined}>การเยี่ยมบ้าน</SectionTitle>
+        {visitRows.length ? (
+          <ul className="flex flex-col gap-2 text-sm">
+            {visitRows.map((v) => (
+              <li key={v.id} className="rounded-xl bg-slate-50 p-2.5">
+                <span className="font-semibold">{formatThaiDate(v.visit_date, "long")}</span>
+                {v.safety_risk && <Badge tone="red" className="ml-2">พบความเสี่ยง</Badge>}
+                {v.monthly_income != null && v.household_size ? <span className="ml-2 text-muted">รายได้ {Math.round(v.monthly_income / v.household_size).toLocaleString("th-TH")} บาท/คน/เดือน</span> : null}
+                {v.data?.needs?.length ? <p className="text-muted">ต้องการ: {v.data.needs.join(", ")}</p> : null}
+                {v.data?.teacher_summary && <p className="mt-1">{v.data.teacher_summary}</p>}
+              </li>
+            ))}
+          </ul>
+        ) : <p className="text-muted">ยังไม่ได้เยี่ยมบ้าน</p>}
+      </Card>
+
+      <Card className="md:col-span-2">
+        <SectionTitle>การช่วยเหลือและส่งต่อ</SectionTitle>
+        {canEdit && <div className="mb-3"><InterventionForm studentId={studentId} classroomId={classroomId} year={year} defaultDomain={worst} /></div>}
+        {ivRows.length ? (
+          <ul className="flex flex-col gap-2">
+            {ivRows.map((i) => (
+              <li key={i.id} className="flex flex-col gap-1 rounded-xl border border-line p-3 text-sm sm:flex-row sm:items-start sm:gap-3">
+                <div className="flex-1">
+                  <p className="text-xs text-muted">{formatThaiDate(i.action_date)} · {INTERVENTION_DOMAINS[i.domain] ?? i.domain}{i.responsible ? ` · ${i.responsible}` : ""}</p>
+                  <p className="font-semibold">{i.activity}</p>
+                  {i.result && <p className="text-muted">ผล: {i.result}</p>}
+                </div>
+                <InterventionStatus id={i.id} status={i.status} canEdit={canEdit} />
+              </li>
+            ))}
+          </ul>
+        ) : <p className="text-muted">ยังไม่มีบันทึกการช่วยเหลือ</p>}
       </Card>
     </div>
   );

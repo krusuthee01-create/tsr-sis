@@ -65,6 +65,9 @@ export const getSettings = cache(async () => {
     attendance_risk_percent: number;
     growth_reference_name: string;
     nutrition_alert_kg: number;
+    sdq_cutoffs?: Record<string, Record<string, number[]>>;
+    eq_ranges?: Record<string, Record<string, number[]>>;
+    screening_rules?: Record<string, number>;
   };
 });
 

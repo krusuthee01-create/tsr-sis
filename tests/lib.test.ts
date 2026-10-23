@@ -198,3 +198,25 @@ test("อ่านตารางเกณฑ์อ้างอิงรูป�
   assert.deepEqual([ht.rows[0].sex, ht.rows[0].height_cm, ht.rows[0].p3], [1, 115, 25.4]);
   assert.match(parseHeightSheet([["ไม่มี", "หัว"]]).error ?? "", /code/);
 });
+
+test("SDQ: คิดคะแนนเหมือนฐานข้อมูล", async () => {
+  const { sdqScore, compressionPlan } = await import("../src/lib/care.ts");
+  const teacher = { total: [15, 18], emotional: [3, 4], conduct: [3, 4], hyperactivity: [5, 6], peer: [3, 4], prosocial: [3] };
+  const zero = sdqScore(Array(25).fill(0), teacher)!;
+  assert.deepEqual([zero.emotional, zero.conduct, zero.hyperactivity, zero.peer, zero.prosocial, zero.total], [0, 2, 4, 4, 0, 10]);
+  assert.equal(zero.levels.prosocial, 3);
+  const v = [0,2,2,0,0, 0,2,2,0,2, 2,0,2,2,2, 2,0,0,0,0, 2,0,0,2,2];
+  const s = sdqScore(v, teacher)!;
+  assert.deepEqual([s.emotional, s.hyperactivity, s.total, s.levels.total], [10, 6, 16, 2]);
+  assert.equal(sdqScore(Array(24).fill(0), teacher), null);
+  assert.equal(sdqScore([...Array(24).fill(0), null], teacher), null);
+  assert.deepEqual(compressionPlan(4000, 3000), { w: 1280, h: 960 });
+  assert.deepEqual(compressionPlan(800, 600), { w: 800, h: 600 });
+});
+
+test("EQ: แปลผลตามช่วงปกติเหมือนฐานข้อมูล", async () => {
+  const { eqLevel } = await import("../src/lib/care.ts");
+  assert.equal(eqLevel(50, undefined), null);
+  assert.equal(eqLevel(null, [48, 58]), null);
+  assert.deepEqual([eqLevel(47, [48, 58]), eqLevel(48, [48, 58]), eqLevel(58, [48, 58]), eqLevel(59, [48, 58])], [0, 1, 1, 2]);
+});

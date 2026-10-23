@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle, Drop, Tooth, ClipboardText, Warning, CaretRight, Chalkboard, GearSix, Scales } from "@phosphor-icons/react/dist/ssr";
+import { CheckCircle, Drop, Tooth, ClipboardText, Warning, CaretRight, Chalkboard, GearSix, Scales, HandHeart } from "@phosphor-icons/react/dist/ssr";
 import { can, getProfile, getSettings, supabaseServer } from "@/lib/supabase/server";
 import { formatThaiDate, todayISO, addDays, formatTime } from "@/lib/thai-date";
 import { classroomName, fullName, shortPrefix } from "@/lib/domain";
@@ -24,9 +24,11 @@ export default async function HomePage() {
   ]);
   const progress = (progressData ?? []) as Progress[];
   const myRooms = (profile?.homerooms ?? []).map((h) => ({ ...h, p: progress.find((p) => p.classroom_id === h.classroom_id) }));
-  const [alerts, { data: openRound }] = await Promise.all([
+  const followupDays = Number(settings?.screening_rules?.followup_days ?? 14);
+  const [alerts, { data: openRound }, careDue] = await Promise.all([
     consecutiveAbsences(sb, myRooms.map((r) => r.classroom_id), today),
     sb.from("measurement_rounds").select("id, name, end_date").lte("start_date", today).gte("end_date", today).limit(1).maybeSingle(),
+    careFollowups(sb, myRooms.filter((r) => r.kind === "homeroom").map((r) => r.classroom_id), settings?.current_year ?? 0, addDays(today, -followupDays)),
   ]);
   const measured = new Map<number, number>();
   if (openRound && myRooms.length) {
@@ -91,6 +93,26 @@ export default async function HomePage() {
                   <span className="flex-1">
                     <span className="block font-semibold text-pink-950">{a.name} ขาดเรียน {a.days} วันติด</span>
                     <span className="text-sm text-pink-800">แนะนำ: โทรหาผู้ปกครอง แล้วบันทึกการติดตาม</span>
+                  </span>
+                  <CaretRight size={20} className="text-pink-700" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {careDue.length > 0 && (
+        <Card className="bg-pink-50">
+          <SectionTitle>ดูแลช่วยเหลือ: ยังไม่มีบันทึกการช่วยเหลือเกิน {followupDays} วัน</SectionTitle>
+          <ul className="flex flex-col gap-2">
+            {careDue.map((a) => (
+              <li key={a.student_id}>
+                <Link href={`/students/${a.student_id}?tab=care`} className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 hover:bg-pink-100/50">
+                  <HandHeart size={26} weight="duotone" className="shrink-0 text-pink-700" />
+                  <span className="flex-1">
+                    <span className="block font-semibold text-pink-950">{a.name} · กลุ่ม{a.overall === 3 ? "มีปัญหา" : "เสี่ยง"}</span>
+                    <span className="text-sm text-pink-800">{a.last ? `ช่วยเหลือล่าสุด ${formatThaiDate(a.last)}` : "ยังไม่เคยบันทึกการช่วยเหลือ"} · แตะเพื่อบันทึก</span>
                   </span>
                   <CaretRight size={20} className="text-pink-700" />
                 </Link>
@@ -211,4 +233,21 @@ async function consecutiveAbsences(sb: Awaited<ReturnType<typeof supabaseServer>
     if (n >= 3 && names.has(id)) out.push({ student_id: id, name: names.get(id)!, days: n });
   }
   return out.sort((a, b) => b.days - a.days);
+}
+
+/** นักเรียนกลุ่มเสี่ยง/มีปัญหาในห้องที่เป็นครูที่ปรึกษา ที่ไม่มีบันทึกการช่วยเหลือตั้งแต่วันที่ since */
+async function careFollowups(sb: Awaited<ReturnType<typeof supabaseServer>>, rooms: number[], year: number, since: string) {
+  if (!rooms.length || !year) return [];
+  const { data } = await sb.from("screenings").select("student_id, overall, students(prefix, first_name, last_name, status)")
+    .eq("year", year).in("classroom_id", rooms).gte("overall", 2);
+  const rows = ((data ?? []) as unknown as { student_id: string; overall: number; students: { prefix: string | null; first_name: string; last_name: string; status: string } }[])
+    .filter((r) => r.students?.status === "studying");
+  if (!rows.length) return [];
+  const { data: ivs } = await sb.from("interventions").select("student_id, action_date").in("student_id", rows.map((r) => r.student_id)).order("action_date", { ascending: false });
+  const last = new Map<string, string>();
+  for (const i of ivs ?? []) if (!last.has(i.student_id)) last.set(i.student_id, i.action_date);
+  return rows.filter((r) => !last.get(r.student_id) || last.get(r.student_id)! < since)
+    .sort((a, b) => b.overall - a.overall)
+    .slice(0, 10)
+    .map((r) => ({ student_id: r.student_id, overall: r.overall, last: last.get(r.student_id) ?? null, name: fullName(r.students, true) }));
 }

@@ -3,7 +3,7 @@
 export type NavItem = {
   href: string;
   label: string;
-  icon: "home" | "check" | "subject" | "students" | "rooms" | "staff" | "reports" | "audit" | "settings" | "manual" | "nutrition";
+  icon: "home" | "check" | "subject" | "students" | "rooms" | "staff" | "reports" | "audit" | "settings" | "manual" | "nutrition" | "care";
   color: string;
   roles?: string[]; // ไม่ระบุ = ทุกคน
   needsTeaching?: boolean;
@@ -14,6 +14,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/attendance", label: "เช็กชื่อ / นม / แปรงฟัน", icon: "check", color: "#4ADE80" },
   { href: "/attendance/subject", label: "เช็กชื่อประจำวิชา", icon: "subject", color: "#86EFAC" },
   { href: "/nutrition", label: "ภาวะโภชนาการ", icon: "nutrition", color: "#FB923C" },
+  { href: "/care", label: "ดูแลช่วยเหลือ", icon: "care", color: "#F472B6" },
   { href: "/students", label: "ทะเบียนนักเรียน", icon: "students", color: "#38BDF8" },
   { href: "/classrooms", label: "ห้องเรียน / ครูที่ปรึกษา", icon: "rooms", color: "#7DD3FC", roles: ["admin"] },
   { href: "/staff", label: "ทะเบียนครู", icon: "staff", color: "#38BDF8" },

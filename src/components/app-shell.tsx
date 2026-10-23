@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   House, CheckSquare, Chalkboard, Student, DoorOpen, IdentificationBadge, ChartBar,
-  ClockCounterClockwise, GearSix, BookOpen, List, X, SignOut, SidebarSimple, Sparkle, Scales,
+  ClockCounterClockwise, GearSix, BookOpen, List, X, SignOut, SidebarSimple, Sparkle, Scales, HandHeart,
 } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
 import { navFor, isActive, BOTTOM_NAV, type NavItem } from "./nav-items";
@@ -19,7 +19,7 @@ import { ROLES } from "@/lib/domain";
 
 const ICONS: Record<NavItem["icon"], Icon> = {
   home: House, check: CheckSquare, subject: Chalkboard, students: Student, rooms: DoorOpen,
-  staff: IdentificationBadge, reports: ChartBar, audit: ClockCounterClockwise, settings: GearSix, manual: BookOpen, nutrition: Scales,
+  staff: IdentificationBadge, reports: ChartBar, audit: ClockCounterClockwise, settings: GearSix, manual: BookOpen, nutrition: Scales, care: HandHeart,
 };
 
 export function AppShell({ profile, schoolName, children }: { profile: Profile; schoolName: string; children: React.ReactNode }) {
