@@ -125,3 +125,34 @@ test("อ่านรายวิชาจากโปรแกรม ปพ.5",
   assert.equal(subjects[0].grade, "ป.1");
   assert.equal(subjects[0].hours, 200);
 });
+
+test("นำเข้ารายชื่อครูจาก Excel", async () => {
+  const { parseStaffSheet, diffStaff, splitFullName, toStaffRecord } = await import("../src/lib/staff-import.ts");
+  assert.deepEqual(splitFullName("นางสาวมานี มีนา"), { prefix: "นางสาว", first_name: "มานี", last_name: "มีนา" });
+  const r = parseStaffSheet([
+    ["รายชื่อครู"],
+    ["คำนำหน้า", "ชื่อ", "นามสกุล", "ตำแหน่ง", "วิทยฐานะ", "กลุ่มสาระ", "โทรศัพท์", "อีเมล Google"],
+    ["นาง", "สมใจ", "รักเรียน", "ครู", "ชำนาญการ", "ภาษาไทย", 812345678, "Somjai@Gmail.com"],
+    ["น.ส.", "มานี", "มีนา", "ครูผู้ช่วย", "", "", "", "ไม่ใช่อีเมล"],
+    ["นาย", "", "ไม่มีชื่อ", "", "", "", "", ""],
+    ["นาย", "ซ้ำ", "อีเมล", "", "", "", "", "somjai@gmail.com"],
+    [],
+  ]);
+  assert.equal(r.rows.length, 2);
+  assert.equal(r.rows[0].email, "somjai@gmail.com");
+  assert.equal(r.rows[0].phone, "0812345678");
+  assert.equal(r.rows[1].prefix, "นางสาว");
+  assert.equal(r.rows[1].email, null);
+  assert.deepEqual(r.issues.map((i) => i.level).sort(), ["error", "error", "warning"]);
+
+  const full = parseStaffSheet([["ชื่อ-สกุล", "ตำแหน่ง"], ["นายมานะ สอนดี", "ครู"]]);
+  assert.equal(full.rows[0].first_name, "มานะ");
+  assert.equal(full.rows[0].prefix, "นาย");
+
+  const changes = diffStaff(r.rows, [
+    { id: "1", prefix: "นาง", first_name: "สมใจ", last_name: "รักเรียน", position: "ครู", academic_rank: null, learning_area: null, phone: null, email: "somjai@gmail.com" },
+  ]);
+  assert.equal(changes[0].kind, "update");
+  assert.equal(changes[1].kind, "new");
+  assert.equal(toStaffRecord(r.rows[1]).email, undefined);
+});

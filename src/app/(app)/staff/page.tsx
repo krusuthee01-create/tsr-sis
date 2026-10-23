@@ -6,6 +6,7 @@ import { Badge, Card, SectionTitle } from "@/components/ui";
 import { ExportButton } from "@/components/export-button";
 import { ROLES } from "@/lib/domain";
 import { AddStaff, ApproveButtons } from "./staff-tools";
+import { StaffImport } from "./staff-import";
 
 export const metadata = { title: "ทะเบียนครู" };
 
@@ -25,7 +26,7 @@ export default async function StaffPage() {
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader title="ทะเบียนครูและบุคลากร" module="staff" help="staff" subtitle={`${active.length} คน`}
-        actions={isAdmin ? <AddStaff /> : undefined} />
+        actions={isAdmin ? <><StaffImport /><AddStaff /></> : undefined} />
 
       {isAdmin && pending.length > 0 && (
         <Card className="mb-4 border-2 border-amber-300 bg-amber-50">
