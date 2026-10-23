@@ -49,8 +49,8 @@ async function skipTour(page) {
   await a.fill("#t1e", "2026-10-31");
   await a.getByRole("button", { name: "บันทึกภาคเรียน" }).click();
   await a.waitForTimeout(1200);
-  await a.fill("#h-date", "2026-10-23");
-  await a.fill("#h-name", "วันปิยมหาราช");
+  await a.fill("#h-date", "2026-12-05");
+  await a.fill("#h-name", "วันพ่อแห่งชาติ");
   await a.getByRole("button", { name: "เพิ่ม", exact: true }).nth(1).click();
   await a.waitForTimeout(1200);
   await a.screenshot({ path: SHOT + "03-calendar.png", fullPage: true });

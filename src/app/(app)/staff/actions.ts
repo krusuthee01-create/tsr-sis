@@ -25,11 +25,17 @@ export async function createLoginAccount(staffId: string, username: string, pass
   if (staff.user_id) return { ok: false, error: "ครูท่านนี้มีบัญชีเข้าระบบแล้ว (ใช้ตั้งรหัสผ่านใหม่แทน)" };
 
   const admin = supabaseAdmin();
-  const { error } = await admin.auth.admin.createUser({
+  const { data: created, error } = await admin.auth.admin.createUser({
     email: usernameToEmail(u), password, email_confirm: true, app_metadata: { staff_id: staffId },
   });
-  if (error) return { ok: false, error: error.message.includes("already") ? "ชื่อผู้ใช้นี้ถูกใช้แล้ว" : error.message };
-  const { error: upd } = await sb.from("staff").update({ username: u, approved: true }).eq("id", staffId);
+  if (error || !created.user) return { ok: false, error: error?.message.includes("already") ? "ชื่อผู้ใช้นี้ถูกใช้แล้ว" : error?.message ?? "สร้างบัญชีไม่สำเร็จ" };
+
+  // ผูกบัญชีกับครูคนนี้โดยตรง: Supabase บางรุ่นใส่ app_metadata หลังสร้างผู้ใช้
+  // trigger จึงอาจสร้างแถว "รออนุมัติ" แยกขึ้นมา — ลบแถวนั้นแล้วผูกให้ถูกคน
+  const uid = created.user.id;
+  const { error: delErr } = await admin.from("staff").delete().eq("user_id", uid).neq("id", staffId);
+  if (delErr) return { ok: false, error: delErr.message };
+  const { error: upd } = await admin.from("staff").update({ user_id: uid, username: u, approved: true }).eq("id", staffId);
   if (upd) return { ok: false, error: upd.message };
   revalidatePath(`/staff/${staffId}`);
   return { ok: true };
