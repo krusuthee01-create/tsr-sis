@@ -7,6 +7,8 @@ export const MODULE_COLORS = {
   attendance: "#16A34A",
   nutrition: "#EA580C",
   care: "#DB2777",
+  grades: "#7C3AED",
+  sar: "#6D28D9",
   registry: "#0284C7",
   staff: "#0369A1",
   reports: "#7C3AED",

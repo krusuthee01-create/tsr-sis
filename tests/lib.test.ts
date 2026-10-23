@@ -220,3 +220,34 @@ test("EQ: แปลผลตามช่วงปกติเหมือนฐ�
   assert.equal(eqLevel(null, [48, 58]), null);
   assert.deepEqual([eqLevel(47, [48, 58]), eqLevel(48, [48, 58]), eqLevel(58, [48, 58]), eqLevel(59, [48, 58])], [0, 1, 1, 2]);
 });
+
+test("ปพ.5: อ่านเกรด คุณลักษณะ กิจกรรม และ GPA", async () => {
+  const { parsePp5Workbook, normalizeGrade, classFromPp5, gpa } = await import("../src/lib/pp5-grades.ts");
+  // @ts-expect-error ไฟล์ช่วยทดสอบเป็น JavaScript
+  const { fakePp5Sheets } = await import("./fake-pp5.mjs");
+  assert.deepEqual(classFromPp5("ประถมศึกษาปีที่ 6/2"), { grade: "ป.6", room: 2 });
+  assert.deepEqual([normalizeGrade(3.5), normalizeGrade("4"), normalizeGrade("ร"), normalizeGrade(" มส "), normalizeGrade(2.3), normalizeGrade(5), normalizeGrade("")], ["3.5", "4", "ร", "มส", null, null, null]);
+  const sheets = fakePp5Sheets({
+    subjects: [{ code: "ท16101", name: "ภาษาไทย", hours: 160, area: "ภาษาไทย" }, { code: "ค16101", name: "คณิตศาสตร์", hours: 40, area: "คณิตศาสตร์" }],
+    students: [
+      { name: "เด็กชายทดสอบ หนึ่ง", citizen_id: "1000000000001", trait: true, term2: true, grades: [{ t1: [30, 10, 4], t2: [28, 10, 3.5], year: [78, 4] }, { t1: [20, 5, 2], t2: [15, 5, "ร"], year: [40, "ร"] }] },
+      { name: "เด็กหญิงทดสอบ สอง", citizen_id: "1000000000002", grades: [{ t1: [10, 5, 1] }] },
+      { name: "เด็กหญิงไม่มีเลข", citizen_id: "" },
+    ],
+  });
+  const f = parsePp5Workbook((n: string) => sheets[n] ?? null);
+  assert.deepEqual([f.grade, f.room, f.year, f.term, f.subjects.length, f.students.length], ["ป.6", 1, 2569, 2, 2, 2]);
+  assert.equal(f.warnings.length, 1);
+  const [a, b] = f.students;
+  assert.deepEqual(a.results.map((r) => `${r.code}/${r.term}=${r.grade}`).sort(), ["ค16101/0=ร", "ค16101/1=2", "ค16101/2=ร", "ท16101/0=4", "ท16101/1=4", "ท16101/2=3.5"]);
+  assert.deepEqual(b.results.map((r) => `${r.code}/${r.term}=${r.grade}`), ["ท16101/1=1"]);
+  assert.equal(a.results.find((r) => r.code === "ท16101" && r.term === 1)?.total, 40);
+  // คุณลักษณะ: ใช้ผลที่กรอกจริง ไม่ใช้ค่า "ไม่ผ่าน" จากสูตรของแถวว่าง
+  assert.deepEqual(a.assessments.filter((x) => x.term === 1).map((x) => `${x.kind}=${x.result}`).sort(), ["activity=ผ่าน", "rtw=ดีเยี่ยม", "trait=ดีเยี่ยม", "values=ดีเยี่ยม"]);
+  assert.equal(b.assessments.length, 0);
+  assert.equal(a.assessments.find((x) => x.kind === "activity")?.items && Object.keys(a.assessments.find((x) => x.kind === "activity")!.items).length, 4);
+  // GPA ถ่วงชั่วโมง ไม่นับ ร ตัดทศนิยม
+  assert.equal(gpa([{ grade: "4", hours: 160 }, { grade: "ร", hours: 40 }]), 4);
+  assert.equal(gpa([{ grade: "3.5", hours: 200 }, { grade: "0", hours: 960 - 200 }]), 0.72);
+  assert.equal(gpa([{ grade: "ร", hours: 40 }]), null);
+});

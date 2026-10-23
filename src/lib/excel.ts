@@ -28,3 +28,10 @@ export async function readSheet(file: File, sheetName?: string): Promise<{ rows:
   const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, raw: true, defval: null, blankrows: false });
   return { rows, sheetNames: wb.SheetNames };
 }
+
+/** อ่านเฉพาะชีตที่ต้องใช้ (ไฟล์ใหญ่เปิดเร็วขึ้น) — คืนฟังก์ชันขอแถวของชีต โดยเก็บแถวว่างไว้ให้ตำแหน่งแถวตรงกับไฟล์ */
+export async function readWorkbook(file: File, sheets: string[]): Promise<(name: string) => unknown[][] | null> {
+  const XLSX = await import("xlsx");
+  const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false, dense: true, sheets });
+  return (name) => (wb.Sheets[name] ? XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, raw: true, defval: null, blankrows: true }) : null);
+}

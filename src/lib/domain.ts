@@ -54,6 +54,7 @@ export const ROLES: Record<string, string> = {
   executive: "ผู้บริหาร",
   health: "งานอนามัย / โภชนาการ",
   guidance: "งานแนะแนว / ดูแลช่วยเหลือ",
+  academic: "งานวิชาการ / ผลการเรียน",
 };
 
 export type RecordKind = "line" | "milk" | "brush";

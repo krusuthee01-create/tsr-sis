@@ -11,6 +11,7 @@ import { HFA, TONE_STYLE, WFA, WFH } from "@/lib/nutrition";
 import { DOMAINS, EQ_DOMAINS, EQ_LEVELS, INFORMANTS, INTERVENTION_DOMAINS, LEVELS, SDQ_SCALES } from "@/lib/care";
 import { ExtraForm, AdminActions } from "./student-actions";
 import { InterventionForm, InterventionStatus } from "./intervention-form";
+import { ASSESSMENT_LABELS, gpa, TERM_LABEL, type AssessmentKind } from "@/lib/pp5-grades";
 
 export const metadata = { title: "ประวัตินักเรียน" };
 
@@ -29,7 +30,7 @@ export default async function StudentPage({ params, searchParams }: { params: Pr
   if (!/^[0-9a-f-]{36}$/.test(id)) notFound();
   const sb = await supabaseServer();
   const [profile, settings] = await Promise.all([getProfile(), getSettings()]);
-  const tab = sp.tab === "attendance" || sp.tab === "history" || sp.tab === "nutrition" || sp.tab === "care" ? sp.tab : "info";
+  const tab = sp.tab === "attendance" || sp.tab === "history" || sp.tab === "nutrition" || sp.tab === "care" || sp.tab === "grades" ? sp.tab : "info";
 
   const [{ data: student }, { data: enrollData }] = await Promise.all([
     sb.from("students").select("*").eq("id", id).maybeSingle(),
@@ -74,6 +75,7 @@ export default async function StudentPage({ params, searchParams }: { params: Pr
         <LinkTabs current={tab} tabs={[
           { id: "info", label: "ข้อมูลทั่วไป", href: base },
           { id: "attendance", label: "การมาเรียน", href: `${base}?tab=attendance` },
+          { id: "grades", label: "ผลการเรียน", href: `${base}?tab=grades` },
           { id: "nutrition", label: "โภชนาการ", href: `${base}?tab=nutrition` },
           ...(s ? [{ id: "care", label: "ดูแลช่วยเหลือ", href: `${base}?tab=care` }] : []),
           { id: "history", label: "ห้องเรียนและสถานะ", href: `${base}?tab=history` },
@@ -85,6 +87,7 @@ export default async function StudentPage({ params, searchParams }: { params: Pr
       ))}
       {tab === "attendance" && <AttendanceTab studentId={id} month={sp.m} base={base} />}
       {tab === "nutrition" && <NutritionTab studentId={id} />}
+      {tab === "grades" && <GradesTab studentId={id} />}
       {tab === "care" && s && current && <CareTab studentId={id} classroomId={current.classroom_id} year={settings?.current_year ?? current.year}
         canEdit={can(profile, "admin") || can(profile, "guidance") || !!profile?.homerooms.some((h) => h.classroom_id === current.classroom_id && h.kind === "homeroom")} />}
       {tab === "history" && <HistoryTab studentId={id} enrollments={enrollments} canSeeHistory={!!s} />}
@@ -408,6 +411,61 @@ async function CareTab({ studentId, classroomId, year, canEdit }: { studentId: s
           </ul>
         ) : <p className="text-muted">ยังไม่มีบันทึกการช่วยเหลือ</p>}
       </Card>
+    </div>
+  );
+}
+
+async function GradesTab({ studentId }: { studentId: string }) {
+  const sb = await supabaseServer();
+  const [{ data: g }, { data: a }] = await Promise.all([
+    sb.from("grade_results").select("year, term, grade, total, subjects(code, name, hours_per_year)").eq("student_id", studentId),
+    sb.from("student_assessments").select("year, term, kind, result").eq("student_id", studentId),
+  ]);
+  const rows = (g ?? []) as unknown as { year: number; term: number; grade: string; total: number | null; subjects: { code: string; name: string; hours_per_year: number | null } }[];
+  const assess = (a ?? []) as { year: number; term: number; kind: AssessmentKind; result: string | null }[];
+  if (!rows.length && !assess.length) return <Card className="text-muted">ยังไม่มีผลการเรียน (นำเข้าจาก ปพ.5 ที่เมนูผลการเรียน) หรือท่านไม่มีสิทธิ์ดูผลการเรียนของนักเรียนคนนี้</Card>;
+  const order = (t: number) => (t === 0 ? 3 : t);
+  const periods = [...new Set([...rows, ...assess].map((r) => `${r.year}-${r.term}`))]
+    .map((k) => k.split("-").map(Number) as [number, number])
+    .sort((x, y) => y[0] - x[0] || order(y[1]) - order(x[1]));
+  return (
+    <div className="flex flex-col gap-3">
+      {periods.map(([year, term]) => {
+        const list = rows.filter((r) => r.year === year && r.term === term).sort((x, y) => x.subjects.code.localeCompare(y.subjects.code, "th"));
+        const value = gpa(list.map((r) => ({ grade: r.grade, hours: r.subjects.hours_per_year })));
+        const as = assess.filter((r) => r.year === year && r.term === term);
+        return (
+          <Card key={`${year}-${term}`}>
+            <SectionTitle action={value !== null ? <span className="rounded-full bg-violet-100 px-3 py-1 font-bold text-violet-800">GPA {value.toFixed(2)}</span> : undefined}>
+              {TERM_LABEL[term]} ปีการศึกษา {year}
+            </SectionTitle>
+            {list.length > 0 && (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead><tr><th>รหัส</th><th>รายวิชา</th><th className="text-center">ชั่วโมง</th><th className="text-center">คะแนน</th><th className="text-center">เกรด</th></tr></thead>
+                  <tbody>{list.map((r) => (
+                    <tr key={r.subjects.code}>
+                      <td>{r.subjects.code}</td><td>{r.subjects.name}</td><td className="text-center">{r.subjects.hours_per_year ?? "-"}</td>
+                      <td className="text-center">{r.total ?? "-"}</td>
+                      <td className={`text-center font-bold ${["0", "ร", "มส"].includes(r.grade) ? "text-red-700" : ""}`}>{r.grade}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            )}
+            {as.length > 0 && (
+              <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                {as.map((x) => (
+                  <div key={x.kind} className="flex justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2">
+                    <dt className="text-muted">{ASSESSMENT_LABELS[x.kind]}</dt>
+                    <dd className={`font-bold ${x.result === "ไม่ผ่าน" ? "text-red-700" : ""}`}>{x.result ?? "-"}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </Card>
+        );
+      })}
     </div>
   );
 }
