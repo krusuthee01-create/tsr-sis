@@ -15,7 +15,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <h1 className="relative text-2xl font-semibold">ระบบสารสนเทศนักเรียน</h1>
           <p className="relative text-sky-100">โรงเรียนอนุบาลเทพสุนทรินทร์</p>
         </div>
-        <div className="-mt-7 flex flex-1 flex-col gap-4 rounded-t-[1.75rem] bg-white px-6 pb-8 pt-7">
+        <div className="relative -mt-7 flex flex-1 flex-col gap-4 rounded-t-[1.75rem] bg-white px-6 pb-8 pt-7">
           <LoginForm initialError={error ? "เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่" : null} />
         </div>
       </div>
