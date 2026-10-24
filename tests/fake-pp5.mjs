@@ -82,7 +82,7 @@ export function excelSerial(iso, buddhist = false) {
 }
 export function fakeLegacySheets({ students, days, weights = [] }) {
   const att = [["Timestamp", "Date", "Term", "StudentID", "Name", "Class", "Att_Status", "Milk_Status", "Brush_Status", "RecordedBy", "RecordedAt"]];
-  days.forEach((day, di) => students.forEach((s, si) => {
+  days.forEach((day, di) => students.forEach((s) => {
     const st = s.status?.[di] ?? "มา";
     att.push([excelSerial(day) + 0.3, excelSerial(day, di % 2 === 0), 244350, s.code, s.name, s.cls, st, st === "มา" ? "ดื่ม" : "ไม่ดื่ม", st === "มา" ? "แปรง" : "ไม่แปรง", "ครูทดสอบ", null]);
   }));

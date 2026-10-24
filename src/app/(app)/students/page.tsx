@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { UploadSimple, ArrowFatLinesUp, MagnifyingGlass, CaretRight } from "@phosphor-icons/react/dist/ssr";
+import { UploadSimple, ArrowFatLinesUp, MagnifyingGlass, CaretRight, ListNumbers } from "@phosphor-icons/react/dist/ssr";
 import { can, getProfile, getSettings, supabaseServer } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/page-header";
 import { Badge, Card, EmptyState, LinkButton } from "@/components/ui";
@@ -54,15 +54,18 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
     }
   }
 
+  const canNumber = isAdmin || (!!current && year === settings?.current_year && !!profile?.homerooms.some((h) => h.classroom_id === current!.id && h.kind === "homeroom"));
   const exportRows = [["เลขที่", "รหัสนักเรียน", "ชื่อ-สกุล", "ชื่อเล่น", "เพศ", "สถานะ"], ...rows.map((r) => [r.number ?? "", r.student_code ?? "", fullName(r), r.nickname ?? "", r.gender ?? "", STUDENT_STATUSES[r.status]?.label ?? r.status])];
 
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader title="ทะเบียนนักเรียน" module="registry" help="students" subtitle={`ปีการศึกษา ${year || "-"}`}
-        actions={isAdmin ? (
+        actions={isAdmin || canNumber ? (
           <>
+            {canNumber && <LinkButton href={`/students/numbers${current ? `?c=${current.id}` : ""}`} variant="secondary" size="sm"><ListNumbers size={20} weight="duotone" /> จัดเลขที่</LinkButton>}
+            {isAdmin && <>
             <LinkButton href="/students/import" variant="secondary" size="sm"><UploadSimple size={20} weight="duotone" /> นำเข้าจาก DMC</LinkButton>
-            <LinkButton href="/students/promote" variant="secondary" size="sm"><ArrowFatLinesUp size={20} weight="duotone" /> เลื่อนชั้นสิ้นปี</LinkButton>
+            <LinkButton href="/students/promote" variant="secondary" size="sm"><ArrowFatLinesUp size={20} weight="duotone" /> เลื่อนชั้นสิ้นปี</LinkButton></>}
           </>
         ) : undefined} />
 
