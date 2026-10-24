@@ -14,7 +14,7 @@ export default async function GradesImportPage() {
   const classrooms = ((data ?? []) as { id: number; year: number; grade: string; room: number }[]).filter((c) => all || own.includes(c.id));
   return (
     <div className="mx-auto max-w-4xl">
-      <PageHeader title="นำเข้าผลการเรียนจาก ปพ.5" module="grades" help="grades" back="/grades" subtitle="ไฟล์โปรแกรม ปพ.5-6 (.xlsb) ของแต่ละห้อง เลือกได้หลายไฟล์พร้อมกัน" />
+      <PageHeader title="นำเข้าผลการเรียน / พัฒนาการ" module="grades" help="grades" back="/grades" subtitle="ประถม: ไฟล์ ปพ.5-6 · อนุบาล: สมุดบันทึกพัฒนาการ — เลือกได้หลายไฟล์พร้อมกัน" />
       {classrooms.length
         ? <Pp5Import classrooms={classrooms} all={all} />
         : <EmptyState title="ท่านยังไม่มีห้องที่นำเข้าได้">นำเข้าได้เฉพาะครูที่ปรึกษา งานวิชาการ และผู้ดูแลระบบ</EmptyState>}

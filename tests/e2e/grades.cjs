@@ -17,10 +17,10 @@ async function login(page, user) {
 }
 
 (async () => {
-  const { fakePp5Sheets } = await import("../fake-pp5.mjs");
+  const { fakePp5Sheets, fakeKgSheets } = await import("../fake-pp5.mjs");
   const dir = SHOT.replace(/grades-$/, "");
   execSync(`mkdir -p ${dir}`);
-  sql("truncate grade_results, student_assessments, grade_imports, sar_targets, national_tests restart identity");
+  sql("truncate grade_results, student_assessments, grade_imports, sar_targets, national_tests, kg_development restart identity");
 
   // ห้อง ป.3/1 ของ flow.cjs: นักเรียน 2 คนแรกมีเกรด คนที่ 1 ได้ ร คณิต
   const room = sql("select c.id || '|' || c.year from classrooms c where grade = 'ป.3' and room = 1 order by year desc limit 1").split("|");
@@ -93,6 +93,30 @@ async function login(page, user) {
   await a.goto(BASE + "/grades?tab=school");
   await a.getByText("รายกลุ่มสาระการเรียนรู้ (เทียบปีก่อน)").waitFor();
   await a.screenshot({ path: SHOT + "06-school.png", fullPage: true });
+  step("ผู้ดูแลระบบ: นำเข้าสมุดบันทึกพัฒนาการ อ.3/1 (ชื่อสะกดต่าง 1 คน → จับคู่ด้วยเลขที่)");
+  const kgRoom = sql("select id from classrooms where grade = 'อ.3' and room = 1 order by year desc limit 1");
+  const kids = sql(`select s.prefix || s.first_name || ' ' || s.last_name from enrollments e join students s on s.id = e.student_id where e.classroom_id = ${kgRoom} order by e.number`).split("\n");
+  const kg = fakeKgSheets({ year: Number(room[1]), students: kids.map((name, i) => ({
+    name: i === 1 ? name + "ี" : name,
+    t1: Array.from({ length: 33 }, (_, k) => (i === 0 && k < 4 ? 1 : 2 + ((i + k) % 2))),
+  })) });
+  const kwb = XLSX.utils.book_new();
+  for (const [n, rows] of Object.entries(kg)) XLSX.utils.book_append_sheet(kwb, XLSX.utils.aoa_to_sheet(rows), n);
+  XLSX.writeFile(kwb, `${dir}/kg-a3-1.xlsx`);
+  await a.goto(BASE + "/grades/import");
+  await a.locator("input[type=file]").setInputFiles(`${dir}/kg-a3-1.xlsx`);
+  await a.getByText("สมุดบันทึกพัฒนาการ ·").waitFor({ timeout: 20000 });
+  await a.getByText(/ชื่อในไฟล์ไม่ตรงกับในระบบ จึงจับคู่ด้วยเลขที่/).waitFor();
+  await a.screenshot({ path: SHOT + "08-kg-preview.png", fullPage: true });
+  await a.getByRole("button", { name: /ยืนยันนำเข้า 1 ห้อง/ }).click();
+  await a.getByText("นำเข้าแล้ว").waitFor({ timeout: 20000 });
+  assert(sql("select count(*) from kg_development") === String(kids.length), "จำนวนผลพัฒนาการไม่ถูกต้อง");
+  await a.goto(`${BASE}/grades?c=${kgRoom}&tab=followup`);
+  await a.getByText("เด็กที่ควรส่งเสริมพัฒนาการ 1 คน").waitFor();
+  await a.goto(`${BASE}/grades?c=${kgRoom}`);
+  await a.getByText(/ระดับคุณภาพ 3 ดี/).waitFor();
+  await a.screenshot({ path: SHOT + "09-kg-room.png", fullPage: true });
+
   await a.goto(BASE + "/sar");
   await a.getByText("ร้อยละของผลการเรียนระดับ 3 ขึ้นไป (ทุกรายวิชา)").waitFor();
   await a.getByLabel("ค่าเป้าหมาย ร้อยละของผลการเรียนระดับ 3 ขึ้นไป (ทุกรายวิชา)").fill("70");
@@ -104,6 +128,7 @@ async function login(page, user) {
   await a.getByRole("button", { name: /บันทึกผล O-NET/ }).click();
   await a.getByText("บันทึกผล O-NET แล้ว").waitFor();
   assert(sql("select school_avg from national_tests") === "52.75", "บันทึก O-NET ไม่สำเร็จ");
+  await a.getByText("ร้อยละเด็กมีพัฒนาการด้านสุขภาวะทางกายระดับดี").waitFor();
   await a.screenshot({ path: SHOT + "07-sar.png", fullPage: true });
 
   await browser.close();

@@ -251,3 +251,24 @@ test("ปพ.5: อ่านเกรด คุณลักษณะ กิจ�
   assert.equal(gpa([{ grade: "3.5", hours: 200 }, { grade: "0", hours: 960 - 200 }]), 0.72);
   assert.equal(gpa([{ grade: "ร", hours: 40 }]), null);
 });
+
+test("พัฒนาการอนุบาล: อ่านสมุดบันทึกและคิดระดับรายด้าน", async () => {
+  const { parseKgWorkbook, kgDomainLevels, kgLevel } = await import("../src/lib/kg-dev.ts");
+  // @ts-expect-error ไฟล์ช่วยทดสอบเป็น JavaScript
+  const { fakeKgSheets } = await import("./fake-pp5.mjs");
+  assert.deepEqual([kgLevel(1.49), kgLevel(1.5), kgLevel(2.49), kgLevel(2.5), kgLevel(null)], [1, 2, 2, 3, null]);
+  const three = Array(33).fill(3);
+  const sheets = fakeKgSheets({ students: [
+    { name: "เด็กชายทดสอบ หนึ่ง", t1: three, t2: [1, 1, 1, 1, ...Array(29).fill(2)] },
+    { name: "เด็กหญิงทดสอบ สอง", t1: [3, "x", 4, ...Array(30).fill(2)] },
+  ] });
+  const f = parseKgWorkbook((n: string) => sheets[n] ?? null);
+  assert.deepEqual([f.grade, f.room, f.year, f.students.length, f.indicators.length], ["อ.3", 1, 2569, 2, 33]);
+  assert.equal(f.warnings.length, 1);
+  assert.deepEqual(f.students[1].t1.slice(0, 3), [3, null, null]);
+  assert.deepEqual(kgDomainLevels(f.students[0].t1), { physical: 3, emotional: 3, civic: 3, intellectual: 3 });
+  assert.deepEqual(kgDomainLevels(f.students[0].t2), { physical: 1, emotional: 2, civic: 2, intellectual: 2 });
+  assert.deepEqual(kgDomainLevels(f.students[0].t1, f.students[0].t2), { physical: 2, emotional: 3, civic: 3, intellectual: 3 });
+  const noInfo = fakeKgSheets({ students: [{ name: "ก ข", t1: three }], withInfo: false });
+  assert.equal(parseKgWorkbook((n: string) => noInfo[n] ?? null).grade, null);
+});

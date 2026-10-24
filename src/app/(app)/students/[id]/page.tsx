@@ -12,6 +12,7 @@ import { DOMAINS, EQ_DOMAINS, EQ_LEVELS, INFORMANTS, INTERVENTION_DOMAINS, LEVEL
 import { ExtraForm, AdminActions } from "./student-actions";
 import { InterventionForm, InterventionStatus } from "./intervention-form";
 import { ASSESSMENT_LABELS, gpa, TERM_LABEL, type AssessmentKind } from "@/lib/pp5-grades";
+import { KG_DOMAINS, KG_LEVELS } from "@/lib/kg-dev";
 
 export const metadata = { title: "ประวัตินักเรียน" };
 
@@ -417,15 +418,17 @@ async function CareTab({ studentId, classroomId, year, canEdit }: { studentId: s
 
 async function GradesTab({ studentId }: { studentId: string }) {
   const sb = await supabaseServer();
-  const [{ data: g }, { data: a }] = await Promise.all([
+  const [{ data: g }, { data: a }, { data: k }] = await Promise.all([
     sb.from("grade_results").select("year, term, grade, total, subjects(code, name, hours_per_year)").eq("student_id", studentId),
     sb.from("student_assessments").select("year, term, kind, result").eq("student_id", studentId),
+    sb.from("kg_development").select("year, term, levels").eq("student_id", studentId),
   ]);
+  const dev = (k ?? []) as { year: number; term: number; levels: Record<string, number | null> }[];
   const rows = (g ?? []) as unknown as { year: number; term: number; grade: string; total: number | null; subjects: { code: string; name: string; hours_per_year: number | null } }[];
   const assess = (a ?? []) as { year: number; term: number; kind: AssessmentKind; result: string | null }[];
-  if (!rows.length && !assess.length) return <Card className="text-muted">ยังไม่มีผลการเรียน (นำเข้าจาก ปพ.5 ที่เมนูผลการเรียน) หรือท่านไม่มีสิทธิ์ดูผลการเรียนของนักเรียนคนนี้</Card>;
+  if (!rows.length && !assess.length && !dev.length) return <Card className="text-muted">ยังไม่มีผลการเรียน (นำเข้าจาก ปพ.5 ที่เมนูผลการเรียน) หรือท่านไม่มีสิทธิ์ดูผลการเรียนของนักเรียนคนนี้</Card>;
   const order = (t: number) => (t === 0 ? 3 : t);
-  const periods = [...new Set([...rows, ...assess].map((r) => `${r.year}-${r.term}`))]
+  const periods = [...new Set([...rows, ...assess, ...dev].map((r) => `${r.year}-${r.term}`))]
     .map((k) => k.split("-").map(Number) as [number, number])
     .sort((x, y) => y[0] - x[0] || order(y[1]) - order(x[1]));
   return (
@@ -434,6 +437,7 @@ async function GradesTab({ studentId }: { studentId: string }) {
         const list = rows.filter((r) => r.year === year && r.term === term).sort((x, y) => x.subjects.code.localeCompare(y.subjects.code, "th"));
         const value = gpa(list.map((r) => ({ grade: r.grade, hours: r.subjects.hours_per_year })));
         const as = assess.filter((r) => r.year === year && r.term === term);
+        const d = dev.find((r) => r.year === year && r.term === term);
         return (
           <Card key={`${year}-${term}`}>
             <SectionTitle action={value !== null ? <span className="rounded-full bg-violet-100 px-3 py-1 font-bold text-violet-800">GPA {value.toFixed(2)}</span> : undefined}>
@@ -452,6 +456,19 @@ async function GradesTab({ studentId }: { studentId: string }) {
                   ))}</tbody>
                 </table>
               </div>
+            )}
+            {d && (
+              <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                {KG_DOMAINS.map((x) => {
+                  const v = d.levels[x.key];
+                  return (
+                    <div key={x.key} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2">
+                      <dt className="text-muted">พัฒนาการ{x.label}</dt>
+                      <dd>{v ? <span className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ background: KG_LEVELS[v].bg, color: KG_LEVELS[v].fg }}>{KG_LEVELS[v].label}</span> : "-"}</dd>
+                    </div>
+                  );
+                })}
+              </dl>
             )}
             {as.length > 0 && (
               <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">

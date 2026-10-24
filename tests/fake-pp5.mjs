@@ -53,3 +53,24 @@ export function fakePp5Sheets({ grade = "ประถมศึกษาปีท
   }
   return sheets;
 }
+
+// สมุดบันทึกพัฒนาการอนุบาลสมมติ: ชีต "นำเข้าคะแนน" (หัวตารางแถว 6 ข้อมูลแถว 11) และ "นำเข้าข้อมูลทั่วไป "
+export function fakeKgSheets({ label = "ชั้นอนุบาล 3/1", year = 2569, students, withInfo = true }) {
+  const rows = Array.from({ length: 10 }, () => Array(90).fill(null));
+  rows[5][1] = "เลขที่"; rows[5][2] = "ชื่อ - นามสกุล";
+  for (let i = 0; i < 33; i++) rows[5][15 + i * 2] = `${i + 1}. ตัวบ่งชี้ที่ ${i + 1}`;
+  rows[9][7] = "ครั้งที่ 1";
+  students.forEach((s, i) => {
+    const r = Array(90).fill(null);
+    r[1] = i + 1; r[2] = s.name;
+    (s.t1 ?? []).forEach((v, k) => { r[15 + k * 2] = v; });
+    (s.t2 ?? []).forEach((v, k) => { r[16 + k * 2] = v; });
+    rows.push(r);
+  });
+  while (rows.length < 66) rows.push([]);
+  rows.push([null, 1, 2, 3, 4, 5]); // แถวช่วยคำนวณใต้ตาราง
+  const sheets = { "นำเข้าคะแนน": rows };
+  if (withInfo) sheets["นำเข้าข้อมูลทั่วไป "] = [[], [], [], [], [], ["ชื่อโรงเรียน ", "ทดสอบ"], [], [], [], [], [], [], ["ปีการศึกษา  ", year],
+    ...Array.from({ length: 10 }, () => []), [null, null, label]];
+  return sheets;
+}

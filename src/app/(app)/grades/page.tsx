@@ -7,6 +7,7 @@ import { ExportButton, PrintButton } from "@/components/export-button";
 import { classroomName, fullName, gradeSort, isKindergarten } from "@/lib/domain";
 import { formatThaiDateTime } from "@/lib/thai-date";
 import { gpa, TERM_LABEL } from "@/lib/pp5-grades";
+import { KgFollowupTab, KgRoomTab, KgSchoolSection, KgStatsTab } from "./kg-tabs";
 
 export const metadata = { title: "ผลการเรียน" };
 
@@ -39,7 +40,7 @@ export default async function GradesPage({ searchParams }: { searchParams: Promi
   ]);
   const teachRooms = new Set((teach ?? []).map((t) => t.classroom_id));
   const classrooms = ((classData ?? []) as Room[])
-    .filter((c) => !isKindergarten(c.grade) && (leader || homeroom.includes(c.id) || teachRooms.has(c.id)))
+    .filter((c) => (leader || homeroom.includes(c.id) || teachRooms.has(c.id)))
     .sort((a, b) => gradeSort(a.grade) - gradeSort(b.grade) || a.room - b.room);
 
   const header = <PageHeader title="ผลการเรียน" module="grades" help="grades" subtitle={`ปีการศึกษา ${year || "-"} · นำเข้าจากโปรแกรม ปพ.5`}
@@ -50,7 +51,8 @@ export default async function GradesPage({ searchParams }: { searchParams: Promi
 
   const classroom = classrooms.find((c) => String(c.id) === sp.c) ?? classrooms.find((c) => homeroom.includes(c.id)) ?? classrooms[0];
   // ภาคเรียนเริ่มต้น: ข้อมูลล่าสุดที่มี (ทั้งปี > ภาค 2 > ภาค 1)
-  const { data: termRows } = await sb.from("grade_results").select("term").eq("year", year).eq("classroom_id", classroom.id).limit(1000);
+  const kg = isKindergarten(classroom.grade);
+  const { data: termRows } = await sb.from(kg ? "kg_development" : "grade_results").select("term").eq("year", year).eq("classroom_id", classroom.id).limit(1000);
   const terms = new Set((termRows ?? []).map((r) => r.term as number));
   const term = sp.t === "0" || sp.t === "1" || sp.t === "2" ? Number(sp.t) : terms.has(0) ? 0 : terms.has(2) ? 2 : 1;
   const tab = ["room", "stats", "followup", "school", "imports"].includes(sp.tab ?? "") && (sp.tab !== "school" || leader) ? sp.tab! : "room";
@@ -60,8 +62,8 @@ export default async function GradesPage({ searchParams }: { searchParams: Promi
   };
   const tabs = [
     { id: "room", label: "รายห้อง", href: q({ tab: "room" }) },
-    { id: "stats", label: "สถิติรายวิชา", href: q({ tab: "stats" }) },
-    { id: "followup", label: "ติดตาม 0 ร มส", href: q({ tab: "followup" }) },
+    { id: "stats", label: kg ? "สถิติรายด้าน" : "สถิติรายวิชา", href: q({ tab: "stats" }) },
+    { id: "followup", label: kg ? "ควรส่งเสริม" : "ติดตาม 0 ร มส", href: q({ tab: "followup" }) },
     ...(leader ? [{ id: "school", label: "ภาพรวมโรงเรียน", href: q({ tab: "school" }) }] : []),
     { id: "imports", label: "ประวัติการนำเข้า", href: q({ tab: "imports" }) },
   ];
@@ -95,10 +97,10 @@ export default async function GradesPage({ searchParams }: { searchParams: Promi
         </div>
       </div>
 
-      {tab === "room" && <RoomTab classroom={classroom} year={year} term={term} showGpa={leader || homeroom.includes(classroom.id)} />}
-      {tab === "stats" && <StatsTab classroom={classroom} year={year} term={term} />}
-      {tab === "followup" && <FollowupTab classroom={classroom} year={year} term={term} />}
-      {tab === "school" && <SchoolTab year={year} term={term} />}
+      {tab === "room" && (kg ? <KgRoomTab classroom={classroom} year={year} term={term} /> : <RoomTab classroom={classroom} year={year} term={term} showGpa={leader || homeroom.includes(classroom.id)} />)}
+      {tab === "stats" && (kg ? <KgStatsTab classroom={classroom} year={year} term={term} /> : <StatsTab classroom={classroom} year={year} term={term} />)}
+      {tab === "followup" && (kg ? <KgFollowupTab classroom={classroom} year={year} term={term} /> : <FollowupTab classroom={classroom} year={year} term={term} />)}
+      {tab === "school" && <><SchoolTab year={year} term={term} /><KgSchoolSection year={year} term={term} /></>}
       {tab === "imports" && <ImportsTab classroom={classroom} year={year} />}
     </div>
   );
@@ -255,7 +257,7 @@ async function SchoolTab({ year, term }: { year: number; term: number }) {
     distribution(year, term), distribution(year - 1, term),
     sb.from("classrooms").select("id, grade, room").in("year", [year, year - 1]),
   ]);
-  if (!rows.length) return <EmptyState title={`ยังไม่มีผลการเรียน ${TERM_LABEL[term]} ปีการศึกษา ${year}`} />;
+  if (!rows.length) return <EmptyState title={`ยังไม่มีผลการเรียนชั้นประถม ${TERM_LABEL[term]} ปีการศึกษา ${year}`} />;
   const roomOf = new Map(((rooms ?? []) as Room[]).map((r) => [r.id, r]));
   const areas = [...new Set(rows.map((r) => r.learning_area ?? "อื่น ๆ"))].sort((a, b) => a.localeCompare(b, "th"));
   const byArea = areas.map((a) => {
