@@ -8,6 +8,7 @@ import { formatThaiDate, todayISO } from "@/lib/thai-date";
 import { SchoolForm, YearsEditor, TermsEditor, HolidaysEditor, PeriodsEditor, SubjectsEditor } from "./settings-forms";
 import { GrowthRefEditor } from "./growth-ref-editor";
 import { CareCriteria } from "./care-criteria";
+import { LegacyImport } from "./legacy-import";
 
 export const metadata = { title: "ตั้งค่าระบบ" };
 
@@ -15,7 +16,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const [profile, settings] = await Promise.all([getProfile(), getSettings()]);
   if (!can(profile, "admin")) redirect("/");
-  const tab = ["school", "calendar", "periods", "subjects", "growth", "care"].includes(sp.s ?? "") ? sp.s! : "overview";
+  const tab = ["school", "calendar", "periods", "subjects", "growth", "care", "legacy"].includes(sp.s ?? "") ? sp.s! : "overview";
   const year = Number(sp.y) || settings?.current_year || 0;
 
   const tabs = [
@@ -26,6 +27,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     { id: "subjects", label: "รายวิชา", href: "/settings?s=subjects" },
     { id: "growth", label: "เกณฑ์โภชนาการ", href: "/settings?s=growth" },
     { id: "care", label: "เกณฑ์ดูแลช่วยเหลือ", href: "/settings?s=care" },
+    { id: "legacy", label: "นำเข้าจากระบบเดิม", href: "/settings?s=legacy" },
   ];
 
   return (
@@ -38,6 +40,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       {tab === "periods" && <Periods />}
       {tab === "subjects" && <Subjects />}
       {tab === "growth" && <Growth />}
+      {tab === "legacy" && <Legacy currentYear={settings?.current_year ?? null} />}
       {tab === "care" && settings && <Card><CareCriteria sdq={settings.sdq_cutoffs ?? {}} eq={settings.eq_ranges ?? {}} rules={settings.screening_rules ?? {}} /></Card>}
     </div>
   );
@@ -140,6 +143,23 @@ async function Growth() {
     <Card>
       <SectionTitle>เกณฑ์อ้างอิงการเจริญเติบโต</SectionTitle>
       <GrowthRefEditor name={settings?.growth_reference_name ?? "-"} ageCount={a ?? 0} heightCount={h ?? 0} alertKg={Number(settings?.nutrition_alert_kg ?? 5)} />
+    </Card>
+  );
+}
+
+async function Legacy({ currentYear }: { currentYear: number | null }) {
+  const sb = await supabaseServer();
+  const [{ data: years }, { data: terms }] = await Promise.all([
+    sb.from("academic_years").select("year").order("year", { ascending: false }),
+    sb.from("terms").select("year, start_date, end_date"),
+  ]);
+  const byYear: Record<number, { start_date: string; end_date: string }[]> = {};
+  for (const t of terms ?? []) (byYear[t.year] ??= []).push(t);
+  const list = (years ?? []).map((y) => y.year as number);
+  return (
+    <Card>
+      <SectionTitle>นำเข้าข้อมูลจากระบบเช็กชื่อเดิม (Google Sheets)</SectionTitle>
+      {list.length ? <LegacyImport years={list} current={currentYear} terms={byYear} /> : <p className="text-muted">เพิ่มปีการศึกษาก่อนที่แท็บปีการศึกษา/ปฏิทิน</p>}
     </Card>
   );
 }

@@ -272,3 +272,38 @@ test("พัฒนาการอนุบาล: อ่านสมุดบั
   const noInfo = fakeKgSheets({ students: [{ name: "ก ข", t1: three }], withInfo: false });
   assert.equal(parseKgWorkbook((n: string) => noInfo[n] ?? null).grade, null);
 });
+
+test("ระบบเดิม: แปลงวันที่ ตัดซ้ำ ข้ามวันหยุด และตรวจน้ำหนักส่วนสูง", async () => {
+  const { parseLegacyWorkbook, legacyDate, legacyClass, roundName } = await import("../src/lib/legacy-import.ts");
+  // @ts-expect-error ไฟล์ช่วยทดสอบเป็น JavaScript
+  const { fakeLegacySheets, excelSerial } = await import("./fake-pp5.mjs");
+  assert.equal(legacyDate(excelSerial("2026-06-25", true)), "2026-06-25");
+  assert.equal(legacyDate(excelSerial("2026-06-25")), "2026-06-25");
+  assert.equal(legacyDate("25/06/2569"), "2026-06-25");
+  assert.deepEqual([legacyClass("อนุบาล 1/1"), legacyClass("ป.2/2")], ["อ.1/1", "ป.2/2"]);
+  assert.equal(roundName("2026-06"), "มิ.ย. 2569");
+  const sheets = fakeLegacySheets({
+    days: ["2026-06-22", "2026-06-23", "2026-06-27"], // 27 มิ.ย. = วันเสาร์
+    students: [{ code: "7317", name: "ก", cls: "ป.2/2", status: ["มา", "ลา"] }, { code: "7220", name: "ข", cls: "อนุบาล 1/1", status: ["ขาด", "มา"] }],
+    weights: [
+      { code: "7317", cls: "ป.2/2", date: "2026-06-10", w: 22, h: 120 },
+      { code: "7220", cls: "อนุบาล 1/1", date: "2026-06-11", w: 105, h: 18 },   // สลับช่อง → แก้ให้
+      { code: "7220", cls: "อนุบาล 2/1", date: "2026-07-11", w: 175, h: 105 },  // ไม่สมเหตุสมผล → ข้าม
+      { code: "7317", cls: "ป.2/2", date: "2026-07-10", w: 17, h: 11 },        // ไม่สมเหตุสมผล → ข้าม
+    ],
+  });
+  // บันทึกซ้ำ: แถวหลัง (เวลาใหม่กว่า) ต้องชนะ
+  const dup = [...sheets.Attendance[1]]; dup[0] += 0.1; dup[6] = "สาย";
+  sheets.Attendance.push(dup);
+  const read: string[] = [];
+  const f = parseLegacyWorkbook((n: string) => { read.push(n); return sheets[n] ?? null; });
+  assert.ok(!read.includes("Teachers"), "ห้ามอ่านชีตรหัสผ่านครู");
+  assert.equal(f.attendance.length, 4);
+  assert.deepEqual([f.stats.weekend, f.stats.duplicates, f.stats.days], [2, 1, 2]);
+  const first = f.attendance.find((a) => a.code === "7317" && a.date === "2026-06-22")!;
+  assert.equal(first.status, 1);
+  const leave = f.attendance.find((a) => a.code === "7317" && a.date === "2026-06-23")!;
+  assert.deepEqual([leave.status, leave.leave, leave.milk], [3, true, false]);
+  assert.deepEqual(f.measures.map((m) => [m.code, m.month, m.weight, m.height, m.swapped]), [["7220", "2026-06", 18, 105, true], ["7317", "2026-06", 22, 120, false]]);
+  assert.equal(f.issues.length, 2);
+});

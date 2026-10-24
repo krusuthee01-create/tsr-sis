@@ -74,3 +74,19 @@ export function fakeKgSheets({ label = "ชั้นอนุบาล 3/1", yea
     ...Array.from({ length: 10 }, () => []), [null, null, label]];
   return sheets;
 }
+
+// ไฟล์ระบบเช็กชื่อเดิมสมมติ (Google Sheets): วันที่บางแถวเป็นเลขวันที่แบบปี พ.ศ.
+export function excelSerial(iso, buddhist = false) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return Math.round((Date.UTC(buddhist ? y + 543 : y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000);
+}
+export function fakeLegacySheets({ students, days, weights = [] }) {
+  const att = [["Timestamp", "Date", "Term", "StudentID", "Name", "Class", "Att_Status", "Milk_Status", "Brush_Status", "RecordedBy", "RecordedAt"]];
+  days.forEach((day, di) => students.forEach((s, si) => {
+    const st = s.status?.[di] ?? "มา";
+    att.push([excelSerial(day) + 0.3, excelSerial(day, di % 2 === 0), 244350, s.code, s.name, s.cls, st, st === "มา" ? "ดื่ม" : "ไม่ดื่ม", st === "มา" ? "แปรง" : "ไม่แปรง", "ครูทดสอบ", null]);
+  }));
+  const w = [["Timestamp", "Date", "Term", "StudentID", "Name", "Class", "Weight (kg)", "Height (cm)", "RecordedMonth", "RecordedBy"]];
+  for (const x of weights) w.push([excelSerial(x.date) + 0.5, excelSerial(x.date, true), 244350, x.code, "ชื่อ", x.cls, x.w, x.h, excelSerial(x.date.slice(0, 8) + "01"), "ครูทดสอบ"]);
+  return { Attendance: att, "น้ำหนักส่วนสูง": w, Teachers: [["TeacherID", "Name", "Username", "Password"], ["T1", "ห้ามอ่าน", "u", "p"]] };
+}
