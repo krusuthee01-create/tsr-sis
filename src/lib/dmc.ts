@@ -1,5 +1,8 @@
 // แปลงไฟล์ "รายชื่อนักเรียนในโรงเรียน" ที่ส่งออกจาก DMC ให้เป็นข้อมูลพร้อมนำเข้า
-// ไฟล์จริงมี 91 คอลัมน์ และมีชื่อคอลัมน์ซ้ำ (จำนวนพี่ชาย/น้องชาย/น้องสาว) จึงเติม " (2)" ให้ชุดที่สอง
+// รองรับ 2 รูปแบบ:
+//  - แบบเต็ม 91 คอลัมน์ มีชื่อคอลัมน์ซ้ำ (จำนวนพี่ชาย/น้องชาย/น้องสาว) จึงเติม " (2)" ให้ชุดที่สอง
+//  - แบบย่อ 39 คอลัมน์ ไม่มีหัว "เลขประจำตัวประชาชน" (เลข 13 หลักอยู่ในคอลัมน์ที่ชื่อ "เลขประจำตัวนักเรียน")
+//    และไม่มีเบอร์โทร ชื่ออังกฤษ ที่อยู่ทะเบียนบ้าน — ช่องที่ไฟล์ไม่มีจะไม่ถูกส่งไปทับข้อมูลเดิม
 
 import { GRADE_CODES, isValidCitizenId } from "./domain.ts";
 import { parseDmcDate } from "./thai-date.ts";
@@ -41,9 +44,49 @@ export type DmcParseResult = {
   headers: string[];
   missingHeaders: string[];
   schoolCode: string | null;
+  format: "full" | "short";
+  /** ฟิลด์ที่ไฟล์นี้มีข้อมูล (ฟิลด์อื่นคงค่าเดิมในระบบ) */
+  present: (keyof DmcRow)[];
 };
 
 export const REQUIRED_HEADERS = ["เลขประจำตัวประชาชน", "ชั้น", "ห้อง", "ชื่อ", "นามสกุล"];
+
+// ฟิลด์ → คอลัมน์ที่ต้องมีอย่างน้อย 1 คอลัมน์ ฟิลด์จึงนับว่าไฟล์มีข้อมูล
+const FIELD_SOURCES: Partial<Record<keyof DmcRow, string[]>> = {
+  student_code: ["รหัสนักเรียน"],
+  first_name_en: ["ชื่อ (อังกฤษ)"],
+  last_name_en: ["นามสกุล (อังกฤษ)"],
+  birth_date: ["วันเกิด"],
+  blood_group: ["หมู่โลหิต"],
+  nationality: ["สัญชาติ"],
+  religion: ["ศาสนา"],
+  father_name: ["ชื่อบิดา"],
+  father_phone: ["หมายเลขโทรศัพท์ของบิดา"],
+  mother_name: ["ชื่อมารดา"],
+  mother_phone: ["หมายเลขโทรศัพท์ของมารดา"],
+  guardian_name: ["ชื่อผู้ปกครอง"],
+  guardian_relation: ["ความเกี่ยวข้องของผู้ปกครองกับนักเรียน"],
+  guardian_phone: ["หมายเลขโทรศัพท์ของผู้ปกครอง"],
+  address_registered: ["ตำบล (ทะเบียนบ้าน)"],
+  address_current: ["ตำบล (ที่อยู่ปัจจุบัน)"],
+  weight: ["น้ำหนัก"],
+  height: ["ส่วนสูง"],
+};
+const ALWAYS: (keyof DmcRow)[] = ["citizen_id", "prefix", "first_name", "last_name", "gender", "grade", "room", "raw"];
+
+const isCitizenLike = (v: unknown) => /^(\d{13}|G\d{12})$/i.test(String(v ?? "").replace(/[\s-]/g, ""));
+
+/** หาคอลัมน์เลขประจำตัวประชาชน: ใช้ชื่อหัวคอลัมน์ก่อน ไม่พบจึงดูจากค่า (คอลัมน์ "เลขประจำตัว…" ที่ค่าเป็นเลข 13 หลัก) */
+function findCitizenColumn(headers: string[], body: unknown[][]): string | null {
+  if (headers.includes("เลขประจำตัวประชาชน")) return "เลขประจำตัวประชาชน";
+  const sample = body.filter((r) => r.some((c) => c !== null && String(c).trim() !== "")).slice(0, 50);
+  for (const [i, h] of headers.entries()) {
+    if (!h.startsWith("เลขประจำตัว") && !h.startsWith("เลขบัตรประชาชน")) continue;
+    const vals = sample.map((r) => r[i]).filter((v) => v !== null && String(v).trim() !== "");
+    if (vals.length && vals.filter(isCitizenLike).length / vals.length >= 0.9) return h;
+  }
+  return null;
+}
 
 /** ทำให้ชื่อคอลัมน์ไม่ซ้ำ: คอลัมน์ที่ซ้ำครั้งที่ 2 จะเป็น "ชื่อ (2)" */
 export function uniqueHeaders(headers: unknown[]): string[] {
@@ -100,13 +143,23 @@ function address(r: Record<string, unknown>, suffix: string): string | null {
 /** sheet = แถวทั้งหมดของชีตแรก (แถวแรกเป็นหัวคอลัมน์) */
 export function parseDmcSheet(sheet: unknown[][]): DmcParseResult {
   const issues: DmcIssue[] = [];
-  const headerIndex = sheet.findIndex((row) => row.some((c) => String(c ?? "").trim() === "เลขประจำตัวประชาชน"));
+  const has = (row: unknown[], name: string) => row.some((c) => String(c ?? "").trim() === name);
+  const headerIndex = sheet.findIndex((row) => ["ชั้น", "ห้อง", "ชื่อ", "นามสกุล"].every((n) => has(row, n)));
   if (headerIndex === -1) {
-    return { rows: [], issues: [], headers: [], missingHeaders: REQUIRED_HEADERS, schoolCode: null };
+    return { rows: [], issues: [], headers: [], missingHeaders: REQUIRED_HEADERS, schoolCode: null, format: "full", present: [] };
   }
   const headers = uniqueHeaders(sheet[headerIndex]);
-  const missingHeaders = REQUIRED_HEADERS.filter((h) => !headers.includes(h));
-  if (missingHeaders.length) return { rows: [], issues: [], headers, missingHeaders, schoolCode: null };
+  const citizenCol = findCitizenColumn(headers, sheet.slice(headerIndex + 1));
+  const missingHeaders = REQUIRED_HEADERS.filter((h) => (h === "เลขประจำตัวประชาชน" ? !citizenCol : !headers.includes(h)));
+  const format = headers.includes("เลขประจำตัวประชาชน") ? "full" : "short";
+  if (missingHeaders.length) return { rows: [], issues: [], headers, missingHeaders, schoolCode: null, format, present: [] };
+  // แบบย่อ: รหัสนักเรียนอยู่ในคอลัมน์ "เลขประจำตัวนักเรียน" อีกคอลัมน์ (ไม่ใช่คอลัมน์เลข 13 หลัก)
+  const codeCol = headers.includes("รหัสนักเรียน") ? "รหัสนักเรียน" : headers.find((h) => h.startsWith("เลขประจำตัวนักเรียน") && h !== citizenCol) ?? null;
+  // ชื่อคอลัมน์แบบย่อ → ชื่อแบบเต็ม
+  const ALIAS: Record<string, string> = { "กลุ่มเลือด": "หมู่โลหิต", "บ้านเลขที่": "เลขที่บ้าน (ที่อยู่ปัจจุบัน)", "หมู่": "หมู่ (ที่อยู่ปัจจุบัน)",
+    "ถนน/ซอย": "ถนน (ที่อยู่ปัจจุบัน)", "ตำบล": "ตำบล (ที่อยู่ปัจจุบัน)", "อำเภอ": "อำเภอ (ที่อยู่ปัจจุบัน)", "จังหวัด": "จังหวัด (ที่อยู่ปัจจุบัน)" };
+  const known = new Set([...headers, ...headers.map((h) => ALIAS[h]).filter(Boolean), ...(codeCol ? ["รหัสนักเรียน"] : [])]);
+  const present = [...ALWAYS, ...(Object.keys(FIELD_SOURCES) as (keyof DmcRow)[]).filter((k) => FIELD_SOURCES[k]!.some((h) => known.has(h)))];
 
   const rows: DmcRow[] = [];
   const seenIds = new Map<string, number>();
@@ -120,13 +173,18 @@ export function parseDmcSheet(sheet: unknown[][]): DmcParseResult {
     headers.forEach((h, idx) => {
       if (h) r[h] = line[idx] ?? null;
     });
-    schoolCode ??= clean(r["รหัสโรงเรียน"]);
+    const value = (h: string) => r[h];
+    const lookup: Record<string, unknown> = { ...r };
+    for (const [from, to] of Object.entries(ALIAS)) if (from in r && !(to in r)) lookup[to] = r[from];
+    lookup["เลขประจำตัวประชาชน"] = value(citizenCol!);
+    if (codeCol) lookup["รหัสนักเรียน"] = value(codeCol);
+    schoolCode ??= clean(lookup["รหัสโรงเรียน"]);
 
-    const citizenId = (clean(r["เลขประจำตัวประชาชน"]) ?? "").replace(/[\s-]/g, "");
-    const firstName = clean(r["ชื่อ"]);
-    const lastName = clean(r["นามสกุล"]) ?? "";
-    const grade = clean(r["ชั้น"]) ?? "";
-    const room = Number(clean(r["ห้อง"]));
+    const citizenId = (clean(lookup["เลขประจำตัวประชาชน"]) ?? "").replace(/[\s-]/g, "");
+    const firstName = clean(lookup["ชื่อ"]);
+    const lastName = clean(lookup["นามสกุล"]) ?? "";
+    const grade = clean(lookup["ชั้น"]) ?? "";
+    const room = Number(clean(lookup["ห้อง"]));
 
     if (!citizenId) {
       issues.push({ row: rowNo, level: "error", message: "ไม่มีเลขประจำตัวประชาชน — ข้ามแถวนี้" });
@@ -141,7 +199,7 @@ export function parseDmcSheet(sheet: unknown[][]): DmcParseResult {
       continue;
     }
     if (!Number.isInteger(room) || room < 1 || room > 20) {
-      issues.push({ row: rowNo, level: "error", message: `ห้อง "${String(r["ห้อง"])}" ไม่ถูกต้อง — ข้ามแถวนี้` });
+      issues.push({ row: rowNo, level: "error", message: `ห้อง "${String(lookup["ห้อง"])}" ไม่ถูกต้อง — ข้ามแถวนี้` });
       continue;
     }
     if (seenIds.has(citizenId)) {
@@ -153,42 +211,42 @@ export function parseDmcSheet(sheet: unknown[][]): DmcParseResult {
       issues.push({ row: rowNo, level: "warning", message: `เลขประชาชน ${citizenId} หลักตรวจสอบไม่ถูกต้อง (นำเข้าได้ แต่ควรตรวจที่ DMC)` });
     }
 
-    const genderRaw = clean(r["เพศ"]);
-    const birth = parseDmcDate(r["วันเกิด"]);
-    if (r["วันเกิด"] && !birth) {
-      issues.push({ row: rowNo, level: "warning", message: `อ่านวันเกิด "${String(r["วันเกิด"])}" ไม่ได้` });
+    const genderRaw = clean(lookup["เพศ"]);
+    const birth = parseDmcDate(lookup["วันเกิด"]);
+    if (lookup["วันเกิด"] && !birth) {
+      issues.push({ row: rowNo, level: "warning", message: `อ่านวันเกิด "${String(lookup["วันเกิด"])}" ไม่ได้` });
     }
 
     rows.push({
       citizen_id: citizenId,
-      student_code: clean(r["รหัสนักเรียน"]),
-      prefix: clean(r["คำนำหน้าชื่อ"]),
+      student_code: clean(lookup["รหัสนักเรียน"]),
+      prefix: clean(lookup["คำนำหน้าชื่อ"]),
       first_name: firstName,
       last_name: lastName,
-      first_name_en: clean(r["ชื่อ (อังกฤษ)"]),
-      last_name_en: clean(r["นามสกุล (อังกฤษ)"]),
+      first_name_en: clean(lookup["ชื่อ (อังกฤษ)"]),
+      last_name_en: clean(lookup["นามสกุล (อังกฤษ)"]),
       gender: genderRaw === "ช" || genderRaw === "ญ" ? genderRaw : null,
       birth_date: birth,
-      blood_group: clean(r["หมู่โลหิต"]),
-      nationality: clean(r["สัญชาติ"]),
-      religion: clean(r["ศาสนา"]),
-      father_name: joinName(r["คำนำหน้าชื่อบิดา"], r["ชื่อบิดา"], r["นามสกุลบิดา"]),
-      father_phone: cleanPhone(r["หมายเลขโทรศัพท์ของบิดา"]),
-      mother_name: joinName(r["คำนำหน้าชื่อมารดา"], r["ชื่อมารดา"], r["นามสกุลมารดา"]),
-      mother_phone: cleanPhone(r["หมายเลขโทรศัพท์ของมารดา"]),
-      guardian_name: joinName(r["คำนำหน้าชื่อผู้ปกครอง"], r["ชื่อผู้ปกครอง"], r["นามสกุลผู้ปกครอง"]),
-      guardian_relation: clean(r["ความเกี่ยวข้องของผู้ปกครองกับนักเรียน"]),
-      guardian_phone: cleanPhone(r["หมายเลขโทรศัพท์ของผู้ปกครอง"]),
-      address_registered: address(r, "ทะเบียนบ้าน"),
-      address_current: address(r, "ที่อยู่ปัจจุบัน"),
-      weight: num(r["น้ำหนัก"]),
-      height: num(r["ส่วนสูง"]),
+      blood_group: clean(lookup["หมู่โลหิต"]),
+      nationality: clean(lookup["สัญชาติ"]),
+      religion: clean(lookup["ศาสนา"]),
+      father_name: joinName(lookup["คำนำหน้าชื่อบิดา"], lookup["ชื่อบิดา"], lookup["นามสกุลบิดา"]),
+      father_phone: cleanPhone(lookup["หมายเลขโทรศัพท์ของบิดา"]),
+      mother_name: joinName(lookup["คำนำหน้าชื่อมารดา"], lookup["ชื่อมารดา"], lookup["นามสกุลมารดา"]),
+      mother_phone: cleanPhone(lookup["หมายเลขโทรศัพท์ของมารดา"]),
+      guardian_name: joinName(lookup["คำนำหน้าชื่อผู้ปกครอง"], lookup["ชื่อผู้ปกครอง"], lookup["นามสกุลผู้ปกครอง"]),
+      guardian_relation: clean(lookup["ความเกี่ยวข้องของผู้ปกครองกับนักเรียน"]),
+      guardian_phone: cleanPhone(lookup["หมายเลขโทรศัพท์ของผู้ปกครอง"]),
+      address_registered: address(lookup, "ทะเบียนบ้าน"),
+      address_current: address(lookup, "ที่อยู่ปัจจุบัน"),
+      weight: num(lookup["น้ำหนัก"]),
+      height: num(lookup["ส่วนสูง"]),
       grade,
       room,
       raw: r,
     });
   }
-  return { rows, issues, headers, missingHeaders: [], schoolCode };
+  return { rows, issues, headers, missingHeaders: [], schoolCode, format, present };
 }
 
 /** ฟิลด์ที่ใช้เทียบว่าข้อมูลเปลี่ยนหรือไม่ (ชื่อภาษาไทยไว้แสดงในหน้าตรวจผล) */
@@ -223,7 +281,7 @@ export type DmcChange =
   | { kind: "missing"; existing: ExistingStudent };
 
 /** เทียบข้อมูลในไฟล์กับข้อมูลในระบบ เพื่อแสดงตัวอย่างก่อนยืนยันนำเข้า */
-export function diffDmc(rows: DmcRow[], existing: ExistingStudent[]): DmcChange[] {
+export function diffDmc(rows: DmcRow[], existing: ExistingStudent[], present?: (keyof DmcRow)[]): DmcChange[] {
   const byId = new Map(existing.map((e) => [e.citizen_id, e]));
   const inFile = new Set(rows.map((r) => r.citizen_id));
   const out: DmcChange[] = [];
@@ -235,6 +293,7 @@ export function diffDmc(rows: DmcRow[], existing: ExistingStudent[]): DmcChange[
     }
     const fields: { label: string; from: string; to: string }[] = [];
     for (const f of COMPARE_FIELDS) {
+      if (present && !present.includes(f.key)) continue;
       const a = ex[f.key] ?? null;
       const b = row[f.key] ?? null;
       if (String(a ?? "") !== String(b ?? "")) fields.push({ label: f.label, from: String(a ?? "-"), to: String(b ?? "-") });
@@ -250,6 +309,9 @@ export function diffDmc(rows: DmcRow[], existing: ExistingStudent[]): DmcChange[
 }
 
 /** ข้อมูลที่ส่งให้ RPC import_dmc */
-export function toImportPayload(row: DmcRow) {
-  return { ...row, room: String(row.room), weight: row.weight, height: row.height };
+export function toImportPayload(row: DmcRow, present?: (keyof DmcRow)[]) {
+  const full = { ...row, room: String(row.room), weight: row.weight, height: row.height };
+  if (!present) return full;
+  // ส่งเฉพาะฟิลด์ที่ไฟล์มี ฟิลด์ที่ไม่ส่ง ระบบคงค่าเดิมไว้
+  return Object.fromEntries(Object.entries(full).filter(([k]) => present.includes(k as keyof DmcRow)));
 }

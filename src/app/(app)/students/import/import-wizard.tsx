@@ -56,7 +56,7 @@ export function ImportWizard({ defaultYear, schoolCode }: { defaultYear: number;
       const e = s.enrollments.find((x) => x.year === year);
       return { ...s, classroom: e ? classroomName(e.classrooms) : null };
     });
-    const d = diffDmc(parsed.rows, existing);
+    const d = diffDmc(parsed.rows, existing, parsed.present);
     setChanges(d);
     setFilter(d.some((c) => c.kind === "new") ? "new" : d.some((c) => c.kind === "changed") ? "changed" : "missing");
     setStep(3);
@@ -64,7 +64,7 @@ export function ImportWizard({ defaultYear, schoolCode }: { defaultYear: number;
 
   async function confirm() {
     if (!changes) return;
-    const toSend = changes.flatMap((c) => (c.kind === "new" || c.kind === "changed" ? [toImportPayload(c.row)] : []));
+    const toSend = changes.flatMap((c) => (c.kind === "new" || c.kind === "changed" ? [toImportPayload(c.row, parsed?.present)] : []));
     setBusy(true);
     setProgress(0);
     const total = { new: 0, updated: 0, moved: 0 };
@@ -145,6 +145,12 @@ export function ImportWizard({ defaultYear, schoolCode }: { defaultYear: number;
                 <CheckCircle size={28} weight="duotone" />
                 <span>อ่านได้ <b>{parsed.rows.length}</b> คน จาก {parsed.headers.length} คอลัมน์ · พร้อมนำเข้าปีการศึกษา {year}</span>
               </div>
+              {parsed.format === "short" && (
+                <p className="rounded-2xl bg-sky-50 p-4 text-sm text-sky-950">
+                  ไฟล์นี้เป็น <b>DMC แบบย่อ</b> ({parsed.headers.length} คอลัมน์) ไม่มีเบอร์โทรศัพท์ ชื่อภาษาอังกฤษ และที่อยู่ตามทะเบียนบ้าน
+                  ระบบจะ<b>คงข้อมูลเหล่านี้ที่มีอยู่เดิมไว้</b> และปรับเฉพาะข้อมูลที่ไฟล์มี เช่น ชั้น ห้อง ชื่อ ผู้ปกครอง ที่อยู่ปัจจุบัน น้ำหนัก ส่วนสูง
+                </p>
+              )}
               {wrongSchool && <p className="rounded-2xl bg-amber-50 p-4 font-semibold text-amber-950">รหัสโรงเรียนในไฟล์ ({parsed.schoolCode}) ไม่ตรงกับที่ตั้งค่าไว้ ({schoolCode}) ตรวจสอบว่าเป็นไฟล์ของโรงเรียนนี้</p>}
               {errors.length > 0 && <IssueList title={`แถวที่ข้ามไป ${errors.length} แถว`} tone="red" items={errors} />}
               {warnings.length > 0 && <IssueList title={`ข้อสังเกต ${warnings.length} รายการ (นำเข้าได้)`} tone="amber" items={warnings} />}

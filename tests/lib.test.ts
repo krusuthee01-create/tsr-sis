@@ -307,3 +307,25 @@ test("ระบบเดิม: แปลงวันที่ ตัดซ้�
   assert.deepEqual(f.measures.map((m) => [m.code, m.month, m.weight, m.height, m.swapped]), [["7220", "2026-06", 18, 105, true], ["7317", "2026-06", 22, 120, false]]);
   assert.equal(f.issues.length, 2);
 });
+
+test("DMC แบบย่อ: หาเลขประชาชนจากค่า และไม่ส่งฟิลด์ที่ไฟล์ไม่มี", async () => {
+  const { parseDmcSheet, toImportPayload, diffDmc } = await import("../src/lib/dmc.ts");
+  const head = ["รหัสโรงเรียน", "ชื่อโรงเรียน", "เลขประจำตัวนักเรียน", "ชั้น", "ห้อง", "เลขประจำตัวนักเรียน", "เพศ", "คำนำหน้าชื่อ", "ชื่อ", "นามสกุล", "วันเกิด", "อายุ(ปี)", "น้ำหนัก", "ส่วนสูง", "กลุ่มเลือด", "ศาสนา", "เชื้อชาติ", "สัญชาติ", "บ้านเลขที่", "หมู่", "ถนน/ซอย", "ตำบล", "อำเภอ", "จังหวัด", "คำนำหน้าชื่อผู้ปกครอง", "ชื่อผู้ปกครอง", "นามสกุลผู้ปกครอง", "อาชีพของผู้ปกครอง", "ความเกี่ยวข้องของผู้ปกครองกับนักเรียน"];
+  const row = ["99999999", "โรงเรียนทดสอบ", "1101700203451", "ป.2", 1, "7491", "ช", "เด็กชาย", "ทดสอบ", "ใจดี", "01/05/2561", 8, 22, 118, "-", "พุทธ", "ไทย", "ไทย", "12/3", "4", "-", "บ้านกลาง", "สอง", "แพร่", "นาง", "แม่", "ใจดี", "รับจ้าง", "มารดา"];
+  const p = parseDmcSheet([head, row]);
+  assert.equal(p.format, "short");
+  assert.deepEqual(p.missingHeaders, []);
+  assert.equal(p.rows.length, 1);
+  const r = p.rows[0];
+  assert.deepEqual([r.citizen_id, r.student_code, r.grade, r.room, r.guardian_name, r.blood_group], ["1101700203451", "7491", "ป.2", 1, "นาง แม่ ใจดี", null]);
+  assert.equal(r.address_current, "12/3 หมู่ 4 ต.บ้านกลาง อ.สอง จ.แพร่");
+  const payload = toImportPayload(r, p.present);
+  for (const k of ["father_phone", "mother_phone", "guardian_phone", "first_name_en", "address_registered"]) assert.ok(!(k in payload), `ห้ามส่ง ${k}`);
+  assert.ok("address_current" in payload && "weight" in payload);
+  // หน้าตรวจผลไม่แสดงว่าเบอร์โทร "ถูกลบ" เพราะไฟล์ไม่มีคอลัมน์นั้น
+  const d = diffDmc(p.rows, [{ id: "x", citizen_id: "1101700203451", student_code: "7491", prefix: "เด็กชาย", first_name: "ทดสอบ", last_name: "ใจดี", birth_date: r.birth_date,
+    gender: "ช", guardian_name: "นาง แม่ ใจดี", guardian_phone: "0811111111", father_phone: "0822222222", address_current: r.address_current, classroom: "ป.2/1", status: "studying" }], p.present);
+  assert.equal(d[0].kind, "same");
+  // ไฟล์ที่ไม่มีคอลัมน์เลข 13 หลักเลย ยังแจ้งว่าไม่ใช่ไฟล์ DMC
+  assert.deepEqual(parseDmcSheet([head.map((h) => (h === "เลขประจำตัวนักเรียน" ? "รหัส" : h)), row]).missingHeaders, ["เลขประจำตัวประชาชน"]);
+});
