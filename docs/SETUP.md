@@ -45,6 +45,10 @@
    | `NEXT_PUBLIC_SUPABASE_URL` | Project URL |
    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon key |
    | `SUPABASE_SERVICE_ROLE_KEY` | service_role key |
+
+   ไม่บังคับ (เมนู "สลับระบบ" / "ลงเวลา / การลา" — ค่าเริ่มต้นชี้ระบบลงเวลาของโรงเรียนอยู่แล้วใน `src/lib/portal-links.ts`):
+   `NEXT_PUBLIC_PORTAL_URL` (ค่าเริ่มต้น `https://gotime.anubantep.ac.th/start?choose=1`) และ
+   `NEXT_PUBLIC_ATTENDANCE_URL` (ค่าเริ่มต้น `https://gotime.anubantep.ac.th`) — แก้แล้วต้อง deploy ใหม่
 4. กด **Deploy** ระบบใช้ภูมิภาค Singapore (`sin1`) ตามไฟล์ `vercel.json` ให้อัตโนมัติ
 5. ถ้าต้องการชื่อเว็บของโรงเรียนเอง (ประมาณ 500 บาท/ปี) เพิ่มได้ที่ Settings › Domains
    แล้วอย่าลืมแก้ Site URL และ Redirect URLs ในข้อ 2.2 ให้ตรงกัน
