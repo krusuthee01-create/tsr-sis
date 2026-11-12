@@ -7,7 +7,7 @@ import { supabaseBrowser } from "@/lib/supabase/client";
 import { Button, Field, Badge } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { ROLES } from "@/lib/domain";
-import { createLoginAccount, deleteStaff, resetPassword } from "./actions";
+import { deleteStaff, switchToGoogle } from "./actions";
 
 const PREFIXES = ["นาย", "นาง", "นางสาว", "ว่าที่ร้อยตรี", "ดร."];
 const POSITIONS = ["ผู้อำนวยการ", "รองผู้อำนวยการ", "ครู", "ครูผู้ช่วย", "พนักงานราชการ", "ครูอัตราจ้าง", "ครูพี่เลี้ยง", "เจ้าหน้าที่ธุรการ", "บุคลากรอื่น"];
@@ -170,42 +170,42 @@ export function RoleEditor({ staffId, roles, active, isSelf }: { staffId: string
   );
 }
 
+/** บัญชีเข้าระบบของครู: เข้าได้ด้วย Google อย่างเดียว */
 export function LoginAccount({ staffId, username, hasUser, email }: { staffId: string; username: string | null; hasUser: boolean; email: string | null }) {
   const toast = useToast();
   const router = useRouter();
-  const [u, setU] = useState("");
-  const [p, setP] = useState("");
+  const [e, setE] = useState(email && !email.endsWith("@users.tsr-sis.local") ? email : "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit() {
     setBusy(true);
     setError(null);
-    const res = username ? await resetPassword(staffId, p) : await createLoginAccount(staffId, u, p);
+    const res = await switchToGoogle(staffId, e);
     setBusy(false);
     if (!res.ok) return setError(res.error);
-    toast(username ? "ตั้งรหัสผ่านใหม่แล้ว แจ้งครูให้เข้าระบบด้วยรหัสใหม่" : "สร้างบัญชีแล้ว");
-    setP("");
+    toast("เปลี่ยนเป็นบัญชี Google แล้ว แจ้งครูให้กด \"เข้าสู่ระบบด้วย Google\" ด้วยอีเมลนี้");
     router.refresh();
   }
 
   if (hasUser && !username) {
     return <p className="text-[0.9375rem]">เข้าระบบด้วย Google <Badge tone="green">{email}</Badge></p>;
   }
+  if (!username) {
+    return email
+      ? <p className="text-[0.9375rem]">ครูกด &ldquo;เข้าสู่ระบบด้วย Google&rdquo; ด้วยอีเมล <Badge tone="blue">{email}</Badge> ได้ทันที (ยังไม่เคยเข้าระบบ)</p>
+      : <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-950">ยังไม่มีอีเมล Google ใส่อีเมลในช่อง &ldquo;อีเมล Google สำหรับเข้าระบบ&rdquo; ในข้อมูลทั่วไป แล้วกดบันทึก ครูจึงจะเข้าระบบได้</p>;
+  }
   return (
     <div className="flex flex-col gap-3">
-      {username ? <p>ชื่อผู้ใช้: <b>{username}</b></p> : (
-        <>
-          {!hasUser && email && <p className="text-sm text-muted">ครูเข้าระบบด้วย Google ({email}) ได้เลย หรือสร้างชื่อผู้ใช้ด้านล่างสำหรับครูที่ไม่มีบัญชี Google</p>}
-          <Field label="ชื่อผู้ใช้" htmlFor="la-u" hint="a-z 0-9 . _ - เช่น somjai.r">
-            <input id="la-u" className="field-input" autoCapitalize="none" value={u} onChange={(e) => setU(e.target.value)} />
-          </Field>
-        </>
-      )}
-      <Field label={username ? "รหัสผ่านใหม่" : "รหัสผ่าน"} htmlFor="la-p" hint="อย่างน้อย 8 ตัวอักษร แจ้งครูทางช่องทางส่วนตัว" error={error}>
-        <input id="la-p" type="text" className="field-input" autoComplete="new-password" value={p} onChange={(e) => setP(e.target.value)} />
+      <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-950">
+        ครูท่านนี้ใช้บัญชีชื่อผู้ใช้ <b>{username}</b> ซึ่งเลิกใช้แล้ว (ระบบเข้าได้ด้วย Google อย่างเดียว)
+        ใส่อีเมล Google ของครู แล้วกดเปลี่ยน ข้อมูลที่ครูเคยบันทึกยังอยู่ครบ
+      </p>
+      <Field label="อีเมล Google ของครู" htmlFor="la-e" hint="Gmail หรืออีเมลโรงเรียนที่เป็นบัญชี Google" error={error}>
+        <input id="la-e" type="email" inputMode="email" className="field-input" autoCapitalize="none" value={e} onChange={(x) => setE(x.target.value)} placeholder="somjai@gmail.com" />
       </Field>
-      <Button onClick={submit} disabled={busy || p.length < 8 || (!username && !u)} className="self-start"><Key size={20} weight="duotone" />{username ? "ตั้งรหัสผ่านใหม่" : "สร้างบัญชีเข้าระบบ"}</Button>
+      <Button onClick={submit} disabled={busy || !e.includes("@")} className="self-start"><Key size={20} weight="duotone" />{busy ? "กำลังเปลี่ยน…" : "เปลี่ยนเป็นบัญชี Google"}</Button>
     </div>
   );
 }

@@ -74,7 +74,7 @@ async function Overview() {
     { ok: roomIds.size > 0 && missingHomeroom === 0, title: "ครูที่ปรึกษาครบทุกห้อง", detail: roomIds.size === 0 ? "ยังไม่มีห้องเรียน (นำเข้าจาก DMC ก่อน)" : missingHomeroom ? `ยังไม่มีครูที่ปรึกษา ${missingHomeroom} ห้อง` : "ครบแล้ว", href: "/classrooms" },
     { ok: (pending.count ?? 0) === 0, title: "บัญชีรออนุมัติ", detail: `${pending.count ?? 0} คน`, href: "/staff" },
     { ok: (subjects.count ?? 0) > 0, title: "รายวิชา (สำหรับเช็กชื่อประจำวิชา)", detail: `${subjects.count ?? 0} วิชา`, href: "/settings?s=subjects", optional: true },
-    { ok: (noAccount.count ?? 0) === 0, title: "ครูที่ยังไม่มีบัญชีเข้าระบบ", detail: `${noAccount.count ?? 0} คน (ใส่อีเมล Google หรือสร้างชื่อผู้ใช้)`, href: "/staff", optional: true },
+    { ok: (noAccount.count ?? 0) === 0, title: "ครูที่ยังไม่มีบัญชีเข้าระบบ", detail: `${noAccount.count ?? 0} คน (ใส่อีเมล Google ในหน้าของครู)`, href: "/staff", optional: true },
   ];
 
   return (

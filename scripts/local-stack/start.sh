@@ -61,6 +61,8 @@ sleep 2
 node jwt.mjs > "$DIR/keys.env"
 . "$DIR/keys.env"
 printf 'NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321\nNEXT_PUBLIC_SUPABASE_ANON_KEY=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\n' "$ANON" "$SERVICE" > "$DIR/env.local"
+# ใช้เฉพาะการทดสอบในเครื่อง: เปิดช่องชื่อผู้ใช้/รหัสผ่าน (ระบบจริงเข้าได้ด้วย Google อย่างเดียว)
+echo "NEXT_PUBLIC_ALLOW_PASSWORD_LOGIN=1" >> "$DIR/env.local"
 echo "พร้อมใช้งาน: คัดลอก $DIR/env.local ไปเป็น .env.local ของโปรเจกต์"
 # ผู้ใช้ทดสอบ: admin.test / krusomjai รหัสผ่าน pass1234
 for n in admin.test krusomjai; do

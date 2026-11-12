@@ -160,25 +160,31 @@ async function skipTour(page) {
   await a.goto(BASE + "/manual");
   await a.screenshot({ path: SHOT + "20-manual.png" });
 
-  step("สร้างบัญชีชื่อผู้ใช้ให้ครูใหม่ (server action)");
+  step("ครูที่เคยใช้บัญชีชื่อผู้ใช้ → ผู้ดูแลระบบเปลี่ยนเป็นบัญชี Google (server action)");
   await a.goto(BASE + "/staff");
   await a.getByRole("button", { name: "เพิ่มครู" }).click();
   await a.fill("#sf-first_name", "มานะ");
   await a.fill("#sf-last_name", "สอนดี");
   await a.getByRole("button", { name: "เพิ่มครู" }).last().click();
   await a.waitForURL(/\/staff\/[0-9a-f-]{36}/);
-  await a.fill("#la-u", "mana.s");
-  await a.fill("#la-p", "pass5678");
-  await a.getByRole("button", { name: "สร้างบัญชีเข้าระบบ" }).click();
-  await a.getByText("ชื่อผู้ใช้: ").waitFor();
+  const manaId = a.url().split("/").pop();
+  // จำลองบัญชีชื่อผู้ใช้แบบเดิม (สร้างก่อนเลิกใช้)
+  const env = Object.fromEntries(require("fs").readFileSync(".env.local", "utf8").trim().split("\n").map((l) => l.split(/=(.*)/s).slice(0, 2)));
+  const res = await fetch("http://127.0.0.1:54321/auth/v1/admin/users", { method: "POST",
+    headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "mana.s@users.tsr-sis.local", password: "pass5678", email_confirm: true, app_metadata: { staff_id: manaId } }) });
+  const oldUid = (await res.json()).id;
+  sql(`delete from staff where user_id = '${oldUid}' and id <> '${manaId}'; update staff set user_id = '${oldUid}', username = 'mana.s', approved = true where id = '${manaId}'`);
+  await a.reload();
+  await a.getByText(/ใช้บัญชีชื่อผู้ใช้/).waitFor();
+  await a.fill("#la-e", "mana.sondee@gmail.com");
+  await a.getByRole("button", { name: "เปลี่ยนเป็นบัญชี Google" }).click();
+  await a.getByText("mana.sondee@gmail.com").first().waitFor();
   await a.screenshot({ path: SHOT + "21-staff-detail.png", fullPage: true });
-  const p3 = await (await browser.newContext()).newPage();
-  await p3.goto(BASE + "/login");
-  await p3.fill("#username", "mana.s");
-  await p3.fill("#password", "pass5678");
-  await p3.click("button[type=submit]");
-  await p3.waitForURL((u) => u.pathname === "/", { timeout: 15000 });
-  console.log("   ครูใหม่เข้าระบบด้วยชื่อผู้ใช้ได้ทันที");
+  const after = sql(`select coalesce(username, '-') || '|' || email || '|' || coalesce(user_id::text, '-') from staff where id = '${manaId}'`);
+  if (after !== "-|mana.sondee@gmail.com|-") throw new Error("เปลี่ยนเป็นบัญชี Google ไม่ถูกต้อง: " + after);
+  if (sql(`select count(*) from auth.users where id = '${oldUid}'`) !== "0") throw new Error("ต้องยกเลิกบัญชีชื่อผู้ใช้เดิม");
+  console.log("   เปลี่ยนเป็นอีเมล Google แล้ว และยกเลิกบัญชีชื่อผู้ใช้เดิม");
 
   await browser.close();
   if (errors.length) { console.log("JS errors:", errors); process.exit(1); }

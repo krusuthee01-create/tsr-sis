@@ -18,6 +18,9 @@ function GoogleLogo() {
   );
 }
 
+// ระบบจริงเข้าได้ด้วย Google อย่างเดียว ช่องชื่อผู้ใช้/รหัสผ่านเปิดเฉพาะการทดสอบอัตโนมัติในเครื่อง
+const PASSWORD_LOGIN = process.env.NEXT_PUBLIC_ALLOW_PASSWORD_LOGIN === "1";
+
 export function LoginForm({ initialError }: { initialError: string | null }) {
   const router = useRouter();
   const [username, setUsername] = useState("");
@@ -61,21 +64,27 @@ export function LoginForm({ initialError }: { initialError: string | null }) {
       <button type="button" onClick={google} disabled={busy} className={btnClass("secondary", "lg")}>
         <GoogleLogo /> เข้าสู่ระบบด้วย Google
       </button>
-      <div className="flex items-center gap-3 text-sm text-muted">
-        <span className="h-px flex-1 bg-line" />หรือใช้ชื่อผู้ใช้<span className="h-px flex-1 bg-line" />
-      </div>
-      <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
-        <Field label="ชื่อผู้ใช้" htmlFor="username" hint="ชื่อที่ผู้ดูแลระบบสร้างให้ เช่น somjai.r">
-          <input id="username" className="field-input" autoComplete="username" autoCapitalize="none" spellCheck={false}
-            value={username} onChange={(e) => setUsername(e.target.value)} placeholder="เช่น somjai.r" />
-        </Field>
-        <Field label="รหัสผ่าน" htmlFor="password" hint="ลืมรหัสผ่าน? แจ้งผู้ดูแลระบบให้ตั้งใหม่ได้ทันที">
-          <input id="password" type="password" className="field-input" autoComplete="current-password"
-            value={password} onChange={(e) => setPassword(e.target.value)} placeholder="อย่างน้อย 8 ตัวอักษร" />
-        </Field>
-        {error && <p role="alert" className="rounded-xl bg-red-50 px-3 py-2.5 text-sm font-medium text-red-800">{error}</p>}
-        <button type="submit" disabled={busy} className={btnClass("primary", "lg")}>{busy ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}</button>
-      </form>
+      {!PASSWORD_LOGIN && error && <p role="alert" className="rounded-xl bg-red-50 px-3 py-2.5 text-sm font-medium text-red-800">{error}</p>}
+      <p className="text-sm text-muted">ใช้อีเมล Google ที่แจ้งผู้ดูแลระบบไว้ (Gmail หรืออีเมลโรงเรียน) ครั้งแรกถ้าขึ้นว่ารออนุมัติ ให้แจ้งผู้ดูแลระบบ</p>
+      {PASSWORD_LOGIN && (
+        <>
+        <div className="flex items-center gap-3 text-sm text-muted">
+          <span className="h-px flex-1 bg-line" />หรือใช้ชื่อผู้ใช้<span className="h-px flex-1 bg-line" />
+        </div>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <Field label="ชื่อผู้ใช้" htmlFor="username" hint="ชื่อที่ผู้ดูแลระบบสร้างให้ เช่น somjai.r">
+            <input id="username" className="field-input" autoComplete="username" autoCapitalize="none" spellCheck={false}
+              value={username} onChange={(e) => setUsername(e.target.value)} placeholder="เช่น somjai.r" />
+          </Field>
+          <Field label="รหัสผ่าน" htmlFor="password" hint="ลืมรหัสผ่าน? แจ้งผู้ดูแลระบบให้ตั้งใหม่ได้ทันที">
+            <input id="password" type="password" className="field-input" autoComplete="current-password"
+              value={password} onChange={(e) => setPassword(e.target.value)} placeholder="อย่างน้อย 8 ตัวอักษร" />
+          </Field>
+          {error && <p role="alert" className="rounded-xl bg-red-50 px-3 py-2.5 text-sm font-medium text-red-800">{error}</p>}
+          <button type="submit" disabled={busy} className={btnClass("primary", "lg")}>{busy ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}</button>
+        </form>
+        </>
+      )}
       <p className="mt-auto flex items-center gap-2.5 rounded-2xl bg-sky-50 px-4 py-3 text-sm text-sky-950">
         <Info size={22} weight="duotone" className="shrink-0" /> ครั้งแรก? ระบบจะพาทัวร์การใช้งาน 1 นาที
       </p>

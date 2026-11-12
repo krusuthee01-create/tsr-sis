@@ -34,7 +34,7 @@ export default async function StaffPage() {
           <ul className="flex flex-col gap-2">
             {pending.map((s) => (
               <li key={s.id} className="flex flex-wrap items-center gap-3 rounded-xl bg-white px-3 py-2.5">
-                <span className="min-w-0 flex-1"><span className="block font-semibold">{name(s)}</span><span className="text-sm text-muted">{s.email}</span></span>
+                <span className="min-w-0 flex-1"><span className="block font-semibold">{name(s)}</span><span className="text-sm text-muted">{s.username ? <span className="font-semibold text-amber-700">ใช้ชื่อผู้ใช้ {s.username} · ต้องเปลี่ยนเป็น Google</span> : s.email}</span></span>
                 <ApproveButtons staffId={s.id} />
               </li>
             ))}

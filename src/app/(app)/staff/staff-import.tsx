@@ -109,7 +109,7 @@ export function StaffImport() {
                 <p className="text-xl font-semibold">นำเข้าเรียบร้อย</p>
                 <p className="text-muted">เพิ่มครูใหม่ {done.added} คน · ปรับปรุงข้อมูล {done.updated} คน</p>
                 {done.failed.length > 0 && <ul className="mt-2 rounded-xl bg-red-50 p-3 text-left text-sm text-red-900">{done.failed.map((f, i) => <li key={i}>{f}</li>)}</ul>}
-                <p className="mt-2 text-sm text-muted">ครูที่มีอีเมล Google เข้าระบบได้ทันที ครูที่ไม่มีอีเมล ให้สร้างชื่อผู้ใช้ในหน้าของครูแต่ละคน</p>
+                <p className="mt-2 text-sm text-muted">ครูที่มีอีเมล Google เข้าระบบได้ทันที ครูที่ยังไม่มีอีเมลในไฟล์ ให้ใส่อีเมล Google ในหน้าของครูแต่ละคน</p>
                 <Button onClick={() => ref.current?.close()} className="mt-2">ปิด</Button>
               </div>
             ) : !changes ? (
