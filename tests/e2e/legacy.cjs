@@ -3,7 +3,8 @@ const { chromium } = require("playwright");
 const { execSync } = require("child_process");
 const XLSX = require("xlsx");
 const SHOT = (process.env.SHOT_DIR || "/tmp/tsr-shots") + "/legacy-";
-const BASE = "http://localhost:3000";
+// ระบบอยู่ใต้ /sis (basePath) · E2E_ORIGIN ใช้ทดสอบผ่าน reverse proxy ได้
+const BASE = (process.env.E2E_ORIGIN || "http://localhost:3000") + "/sis";
 const sql = (q) => execSync(`psql "${process.env.E2E_DB || "postgres://postgres@127.0.0.1:54329/tsr_e2e"}" -Atc "${q}"`).toString().trim();
 const step = (s) => console.log("▶", s);
 const assert = (c, m) => { if (!c) throw new Error(m); };
@@ -30,7 +31,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
   const a = await (await browser.newContext({ viewport: { width: 1180, height: 900 } })).newPage();
   a.on("pageerror", (e) => errors.push(e.message));
   await a.goto(BASE + "/login"); await a.fill("#username", "admin.test"); await a.fill("#password", "pass1234"); await a.click("button[type=submit]");
-  await a.waitForURL((u) => !u.pathname.startsWith("/login"));
+  await a.waitForURL((u) => !u.pathname.startsWith("/sis/login"));
 
   step("ผู้ดูแลระบบเลือกไฟล์ระบบเดิม → ตรวจก่อนนำเข้า");
   await a.goto(BASE + "/settings?s=legacy");

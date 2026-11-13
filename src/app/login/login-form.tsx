@@ -6,6 +6,7 @@ import { Info } from "@phosphor-icons/react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { Field, btnClass } from "@/components/ui";
 import { usernameToEmail } from "@/lib/accounts";
+import { withBase } from "@/lib/base-path";
 
 function GoogleLogo() {
   return (
@@ -32,7 +33,7 @@ export function LoginForm({ initialError }: { initialError: string | null }) {
     setBusy(true);
     const { error } = await supabaseBrowser().auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${location.origin}/auth/callback`, queryParams: { prompt: "select_account" } },
+      options: { redirectTo: `${location.origin}${withBase("/auth/callback")}`, queryParams: { prompt: "select_account" } },
     });
     if (error) {
       setError("เชื่อมต่อ Google ไม่สำเร็จ: " + error.message);

@@ -6,6 +6,7 @@ import { classroomName, fullName, gradeSort } from "@/lib/domain";
 import { addDays, formatThaiDate, formatThaiDateTime, formatTime, monthRange, THAI_MONTHS, todayISO } from "@/lib/thai-date";
 import { attendancePercent, buildPp5Grid, buildSummaryGrid, type SummaryRow } from "@/lib/reports";
 import { ReportFilters } from "./report-filters";
+import { withBase } from "@/lib/base-path";
 
 export const metadata = { title: "รายงาน" };
 
@@ -118,7 +119,7 @@ async function Daily({ sp }: { sp: SP }) {
   return (
     <div className="flex flex-col gap-3">
       <Card className="no-print flex flex-wrap items-end gap-3">
-        <form className="flex items-end gap-2" action="/reports">
+        <form className="flex items-end gap-2" action={withBase("/reports")}>
           <input type="hidden" name="tab" value="daily" />
           <label className="flex flex-col gap-1 text-sm font-semibold">วันที่ ({formatThaiDate(date, "weekday")})
             <input type="date" name="d" defaultValue={date} className="field-input" />
@@ -162,7 +163,7 @@ async function Usage({ sp }: { sp: SP }) {
   return (
     <div className="flex flex-col gap-3">
       <Card className="no-print">
-        <form className="flex flex-wrap items-end gap-2" action="/reports">
+        <form className="flex flex-wrap items-end gap-2" action={withBase("/reports")}>
           <input type="hidden" name="tab" value="usage" />
           <label className="flex flex-col gap-1 text-sm font-semibold">ตั้งแต่<input type="date" name="from" defaultValue={from} className="field-input" /></label>
           <label className="flex flex-col gap-1 text-sm font-semibold">ถึง<input type="date" name="to" defaultValue={to} className="field-input" /></label>

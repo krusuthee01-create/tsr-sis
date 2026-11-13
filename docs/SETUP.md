@@ -29,8 +29,9 @@
 
 ### 2.2 ตั้งค่าอื่นใน Supabase › Authentication
 - **URL Configuration**
-  - Site URL: ที่อยู่เว็บจริง เช่น `https://tsr-sis.vercel.app`
-  - Redirect URLs: เพิ่ม `https://tsr-sis.vercel.app/auth/callback`
+  - Site URL: ที่อยู่เว็บจริง เช่น `https://tsr-sis.vercel.app/sis`
+  - Redirect URLs: เพิ่ม `https://tsr-sis.vercel.app/sis/auth/callback` (ทุกหน้าอยู่ใต้ `/sis` — ดูหัวข้อ "ที่อยู่ /sis" ด้านล่าง)
+    ถ้าเปิดผ่านระบบลงเวลาด้วย เพิ่ม `https://gotime.anubantep.ac.th/sis/**` และโดเมนโรงเรียน `https://sis.anubantep.ac.th/sis/**`
 - **Sign In / Providers › Email**: เปิดไว้ (ใช้กับบัญชีชื่อผู้ใช้/รหัสผ่านที่ผู้ดูแลระบบสร้างให้)
   และ **ปิด "Confirm email"**
 - ผู้ที่เข้าระบบด้วย Google ครั้งแรกจะอยู่ในสถานะ "รออนุมัติ" และไม่เห็นข้อมูลใดจนกว่าผู้ดูแลระบบจะอนุมัติ
@@ -49,9 +50,30 @@
    ไม่บังคับ (เมนู "สลับระบบ" / "ลงเวลา / การลา" — ค่าเริ่มต้นชี้ระบบลงเวลาของโรงเรียนอยู่แล้วใน `src/lib/portal-links.ts`):
    `NEXT_PUBLIC_PORTAL_URL` (ค่าเริ่มต้น `https://gotime.anubantep.ac.th/start?choose=1`) และ
    `NEXT_PUBLIC_ATTENDANCE_URL` (ค่าเริ่มต้น `https://gotime.anubantep.ac.th`) — แก้แล้วต้อง deploy ใหม่
+   ไม่บังคับ: `SIS_PROXY_ORIGINS` = host ของระบบที่ส่งต่อ `/sis` มาที่นี่ คั่นด้วยจุลภาค (ค่าเริ่มต้น `gotime.anubantep.ac.th`)
+   ใช้ตรวจ Origin ของ Server Actions (เช่น เปลี่ยนเป็นบัญชี Google ในหน้าทะเบียนครู) — ใช้ตอน build
 4. กด **Deploy** ระบบใช้ภูมิภาค Singapore (`sin1`) ตามไฟล์ `vercel.json` ให้อัตโนมัติ
 5. ถ้าต้องการชื่อเว็บของโรงเรียนเอง (ประมาณ 500 บาท/ปี) เพิ่มได้ที่ Settings › Domains
    แล้วอย่าลืมแก้ Site URL และ Redirect URLs ในข้อ 2.2 ให้ตรงกัน
+
+## ที่อยู่ /sis (เปิดใต้ที่อยู่เดียวกับระบบลงเวลา)
+
+ทุกหน้าของ TSR-SIS อยู่ใต้ `/sis` (`basePath` ใน `next.config.ts`) build เดียวใช้ได้ทุกที่อยู่:
+- `https://gotime.anubantep.ac.th/sis/...` — Caddy ของระบบลงเวลาส่งต่อมา Vercel (`Host: tsr-sis.vercel.app`)
+  ทำให้ iPhone เปิด TSR-SIS ในแอปบนหน้าจอโฮมของระบบลงเวลาได้เลย ไม่เด้งหน้าต่างเบราว์เซอร์ซ้อน
+- `https://sis.anubantep.ac.th/sis/...` และ `https://tsr-sis.vercel.app/sis/...` — ที่อยู่เดิมยังใช้ได้
+- ที่อยู่เดิมที่ไม่มี `/sis` (บุ๊กมาร์ก ไอคอนบนหน้าจอโฮมเดิม) พาไป `/sis/...` อัตโนมัติ (redirect 307)
+
+ข้อควรรู้:
+- redirect ทุกตัวของระบบเป็นแบบ relative (`Location: /sis/...`) เบราว์เซอร์จึงอยู่ที่ที่อยู่เดิมเสมอ ไม่หลุดไป `tsr-sis.vercel.app`
+  ห้ามใช้ `request.nextUrl.origin` สร้างลิงก์ (หลัง proxy คือ host ของ Vercel) — ใช้ `src/lib/relative-redirect.ts`
+- คุกกี้เข้าสู่ระบบอยู่ที่ path `/sis` ไม่ปนกับระบบลงเวลา · คุกกี้รุ่นเก่า (path `/`) ย้ายให้อัตโนมัติครั้งแรกที่เปิด ไม่ต้องเข้าสู่ระบบใหม่
+- service worker อยู่ที่ `/sis/sw.js` scope `/sis` · แคชชื่อ `tsr-*` เท่านั้น · ตัวเก่า (scope `/`) ถูกถอนเมื่อเปิดหน้าใหม่
+- รายการเช็กชื่อที่ยังไม่ส่ง (IndexedDB) และแคชแยกตามที่อยู่เว็บ: ของ `sis.anubantep.ac.th` อยู่ที่นั่น ไม่ย้ายไป `gotime...`
+  ครูที่มีรายการค้าง ให้เปิดไอคอน TSR-SIS เดิมตอนมีสัญญาณ 1 ครั้งให้ส่งให้ครบก่อนเปลี่ยนไปใช้ไอคอนระบบลงเวลา
+- ในโค้ด: `next/link`, `router.push`, `redirect()` เติม `/sis` ให้เอง · `<a href>`, `<form action>`, `<Image src>`, metadata,
+  `history.replaceState` และ URL ที่ส่งให้ Supabase ต้องใช้ `withBase()` จาก `src/lib/base-path.ts`
+- ทดสอบผ่าน reverse proxy: `tests/e2e/basepath-proxy.cjs` (วิธีเปิด proxy อยู่ในหัวไฟล์) และ `E2E_ORIGIN=<proxy> node tests/e2e/flow.cjs`
 
 ## 4. ตั้งค่าครั้งแรกในระบบ
 

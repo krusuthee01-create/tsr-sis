@@ -3,7 +3,8 @@ const { chromium } = require("playwright");
 const { execSync } = require("child_process");
 const XLSX = require("xlsx");
 const SHOT = (process.env.SHOT_DIR || "/tmp/tsr-shots") + "/grades-";
-const BASE = "http://localhost:3000";
+// ระบบอยู่ใต้ /sis (basePath) · E2E_ORIGIN ใช้ทดสอบผ่าน reverse proxy ได้
+const BASE = (process.env.E2E_ORIGIN || "http://localhost:3000") + "/sis";
 const sql = (q) => execSync(`psql "${process.env.E2E_DB || "postgres://postgres@127.0.0.1:54329/tsr_e2e"}" -Atc "${q}"`).toString().trim();
 const step = (s) => console.log("▶", s);
 const assert = (c, m) => { if (!c) throw new Error(m); };
@@ -13,7 +14,7 @@ async function login(page, user) {
   await page.fill("#username", user);
   await page.fill("#password", "pass1234");
   await page.click("button[type=submit]");
-  await page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 15000 });
+  await page.waitForURL((u) => !u.pathname.startsWith("/sis/login"), { timeout: 15000 });
 }
 
 (async () => {
@@ -82,7 +83,7 @@ async function login(page, user) {
 
   step("ครูไม่มีสิทธิ์เปิดหน้า SAR → กลับหน้าแรก");
   await t.goto(BASE + "/sar");
-  await t.waitForURL(BASE + "/");
+  await t.waitForURL(BASE);
 
   step("ผู้ดูแลระบบ: ภาพรวมโรงเรียน และ SAR พร้อมค่าเป้าหมาย / ผล O-NET");
   const actx = await browser.newContext({ viewport: { width: 1180, height: 820 } });

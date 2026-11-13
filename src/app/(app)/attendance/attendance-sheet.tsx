@@ -9,6 +9,7 @@ import { ATTENDANCE_STATUSES, RECORD_KINDS, classroomName, fullName, isPresent, 
 import { addDays, formatThaiDate, formatTime, isWeekend, todayISO } from "@/lib/thai-date";
 import { Spinner, Stat } from "@/components/ui";
 import { useToast } from "@/components/toast";
+import { withBase } from "@/lib/base-path";
 
 export type ClassOption = { id: number; grade: string; room: number };
 type Student = { student_id: string; number: number | null; prefix: string | null; first_name: string; last_name: string; nickname: string | null };
@@ -42,7 +43,7 @@ export function AttendanceSheet({ options, initialClass, initialKind, initialDat
   // จำห้อง/แท็บ/วันที่ไว้ใน URL เพื่อให้กดย้อนกลับและแชร์ลิงก์ได้
   useEffect(() => {
     const url = `/attendance?c=${classroom}&k=${kind}${date !== today ? `&d=${date}` : ""}`;
-    window.history.replaceState(null, "", url);
+    window.history.replaceState(null, "", withBase(url)); // history ไม่เติม basePath ให้
   }, [classroom, kind, date, today]);
 
   const load = useCallback(async (c: number, d: string) => {

@@ -42,7 +42,7 @@ npm install
 npm test                 # ทดสอบฟังก์ชัน
 npm run test:sql         # ทดสอบฐานข้อมูล (ต้องมี PostgreSQL ที่ localhost)
 scripts/local-stack/start.sh          # เปิด Supabase จำลอง (PostgreSQL ที่ 127.0.0.1:54329)
-cp /tmp/tsr-stack/env.local .env.local && npm run build && npm start
+cp /tmp/tsr-stack/env.local .env.local && npm run build && npm start   # เปิด http://localhost:3000/sis
 python3 tests/e2e/make-fake-dmc.py /tmp/tsr-fake-dmc.xlsx
 npm run test:e2e         # ต้องติดตั้ง playwright
 ```

@@ -6,5 +6,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icons/|manifest.webmanifest|sw.js|.*\\.(?:png|svg|jpg|webp|ico)$).*)"],
+  // Next เติม basePath (/sis) หน้า matcher ให้เอง — ที่นี่จึงเขียนแบบไม่มี /sis
+  // "/" = หน้าแรก /sis (แบบที่สองต้องมี / ตามหลัง /sis จึงไม่ครอบหน้าแรก)
+  matcher: ["/", "/((?!_next/static|_next/image|favicon.ico|icons/|manifest.webmanifest|sw.js|.*\\.(?:png|svg|jpg|webp|ico)$).*)"],
 };

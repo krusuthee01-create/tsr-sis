@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { LoginForm } from "./login-form";
+import { withBase } from "@/lib/base-path";
 
 export const metadata = { title: "เข้าสู่ระบบ" };
 
@@ -11,7 +12,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <div className="relative flex flex-col items-center gap-2.5 overflow-hidden bg-navy-700 px-6 pb-12 pt-10 text-center text-white">
           <div className="absolute -right-20 -top-20 size-64 rounded-full bg-sky-brand/35" aria-hidden />
           <div className="absolute -bottom-10 -left-12 size-40 rounded-full bg-lotus/35" aria-hidden />
-          <Image src="/icons/logo.png" alt="ตราโรงเรียนอนุบาลเทพสุนทรินทร์" width={112} height={112} priority className="relative size-28 rounded-full bg-white p-1.5" />
+          <Image src={withBase("/icons/logo.png")} alt="ตราโรงเรียนอนุบาลเทพสุนทรินทร์" width={112} height={112} priority className="relative size-28 rounded-full bg-white p-1.5" />
           <h1 className="relative text-2xl font-semibold">ระบบสารสนเทศนักเรียน</h1>
           <p className="relative text-sky-100">โรงเรียนอนุบาลเทพสุนทรินทร์</p>
         </div>

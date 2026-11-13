@@ -4,6 +4,7 @@ import { can, getProfile, supabaseServer } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/page-header";
 import { Card, EmptyState } from "@/components/ui";
 import { addDays, formatThaiDateTime, todayISO } from "@/lib/thai-date";
+import { withBase } from "@/lib/base-path";
 
 export const metadata = { title: "ประวัติการแก้ไข" };
 
@@ -42,7 +43,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
     <div className="mx-auto max-w-5xl">
       <PageHeader title="ประวัติการแก้ไข" module="system" help="audit" subtitle="ใคร ทำอะไร เมื่อไร ค่าก่อนและหลัง" />
       <Card className="mb-3">
-        <form className="flex flex-wrap items-end gap-2" action="/audit">
+        <form className="flex flex-wrap items-end gap-2" action={withBase("/audit")}>
           <label className="flex flex-col gap-1 text-sm font-semibold">ประเภทข้อมูล
             <select name="t" defaultValue={sp.t ?? ""} className="field-input">
               <option value="">ทั้งหมด</option>

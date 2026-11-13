@@ -2,11 +2,13 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { cache } from "react";
+import { AUTH_COOKIE_OPTIONS } from "./cookies";
 
 /** Supabase ฝั่งเซิร์ฟเวอร์ ใช้สิทธิ์ของผู้ใช้ที่ล็อกอินอยู่ (RLS ทำงานตามปกติ) */
 export async function supabaseServer() {
   const store = await cookies();
   return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    cookieOptions: AUTH_COOKIE_OPTIONS,
     cookies: {
       getAll: () => store.getAll(),
       setAll: (list) => {
