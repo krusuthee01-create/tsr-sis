@@ -329,3 +329,31 @@ test("DMC แบบย่อ: หาเลขประชาชนจากค�
   // ไฟล์ที่ไม่มีคอลัมน์เลข 13 หลักเลย ยังแจ้งว่าไม่ใช่ไฟล์ DMC
   assert.deepEqual(parseDmcSheet([head.map((h) => (h === "เลขประจำตัวนักเรียน" ? "รหัส" : h)), row]).missingHeaders, ["เลขประจำตัวประชาชน"]);
 });
+
+test("เมนูสลับระบบ / ลงเวลา (แบบ ก ประตูเดียว)", async () => {
+  const { linkOr, DEFAULT_PORTAL_URL, DEFAULT_ATTENDANCE_URL, PORTAL_URL, ATTENDANCE_URL } = await import("../src/lib/portal-links.ts");
+  const { navFor, isActive, BOTTOM_NAV, EXTERNAL_ITEMS } = await import("../src/components/nav-items.ts");
+  assert.equal(DEFAULT_PORTAL_URL, "https://gotime.anubantep.ac.th/start?choose=1");
+  assert.equal(DEFAULT_ATTENDANCE_URL, "https://gotime.anubantep.ac.th");
+  // ไม่ตั้งค่าใน env (ชุดทดสอบ) → ค่าเริ่มต้น
+  if (!process.env.NEXT_PUBLIC_PORTAL_URL) assert.equal(PORTAL_URL, DEFAULT_PORTAL_URL);
+  if (!process.env.NEXT_PUBLIC_ATTENDANCE_URL) assert.equal(ATTENDANCE_URL, DEFAULT_ATTENDANCE_URL);
+  assert.equal(linkOr(undefined, "https://a.test"), "https://a.test");
+  assert.equal(linkOr("  ", "https://a.test"), "https://a.test");
+  assert.equal(linkOr("javascript:alert(1)", "https://a.test"), "https://a.test");
+  assert.equal(linkOr("ไม่ใช่ลิงก์", "https://a.test"), "https://a.test");
+  assert.equal(linkOr(" https://b.test/start?choose=1 ", "https://a.test"), "https://b.test/start?choose=1");
+  // ทุกบทบาทเห็นทั้งสองเมนู (รวมครูที่ไม่มีบทบาทพิเศษ)
+  for (const roles of [[], ["admin"], ["executive"], ["academic"]]) {
+    const items = navFor(roles).filter((i) => i.external);
+    assert.deepEqual(items.map((i) => i.label), ["สลับระบบ", "ลงเวลา / การลา"]);
+  }
+  assert.deepEqual(EXTERNAL_ITEMS.map((i) => i.href), [PORTAL_URL, ATTENDANCE_URL]);
+  // ไม่เป็นเมนูที่เลือกอยู่ในหน้าใดเลย และไม่อยู่ในแถบเมนูล่าง
+  for (const p of ["/", "/attendance", "/start", "/manual"]) {
+    for (const it of EXTERNAL_ITEMS) assert.equal(isActive(p, it.href), false);
+  }
+  assert.equal(isActive("/", "/"), true);
+  assert.equal(isActive("/students/1", "/students"), true);
+  assert.deepEqual(BOTTOM_NAV, ["/", "/attendance", "/students", "/reports"]);
+});

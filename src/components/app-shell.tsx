@@ -7,9 +7,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   House, CheckSquare, Chalkboard, Student, DoorOpen, IdentificationBadge, ChartBar,
   ClockCounterClockwise, GearSix, BookOpen, List, X, SignOut, SidebarSimple, Sparkle, Scales, HandHeart, GraduationCap, Medal,
+  ArrowsLeftRight, Fingerprint,
 } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
-import { navFor, isActive, BOTTOM_NAV, type NavItem } from "./nav-items";
+import { navFor, isActive, BOTTOM_NAV, EXTERNAL_ITEMS, type NavItem } from "./nav-items";
 import { FontSizeControl } from "./font-size";
 import { SyncBar } from "./sync-bar";
 import { Tour } from "./tour";
@@ -20,6 +21,7 @@ import { ROLES } from "@/lib/domain";
 const ICONS: Record<NavItem["icon"], Icon> = {
   home: House, check: CheckSquare, subject: Chalkboard, students: Student, rooms: DoorOpen,
   staff: IdentificationBadge, reports: ChartBar, audit: ClockCounterClockwise, settings: GearSix, manual: BookOpen, nutrition: Scales, care: HandHeart, grades: GraduationCap, sar: Medal,
+  switch: ArrowsLeftRight, timeclock: Fingerprint,
 };
 
 export function AppShell({ profile, schoolName, children }: { profile: Profile; schoolName: string; children: React.ReactNode }) {
@@ -112,12 +114,17 @@ export function AppShell({ profile, schoolName, children }: { profile: Profile; 
           <div className="grid flex-1 auto-rows-min grid-cols-2 gap-3 overflow-y-auto px-4 pb-6 sm:grid-cols-3">
             {items.map((item) => {
               const Ico = ICONS[item.icon];
-              return (
-                <Link key={item.href} href={item.href} className="flex min-h-24 flex-col justify-between rounded-2xl bg-white/10 p-3.5 hover:bg-white/15">
+              const cls = "flex min-h-24 flex-col justify-between rounded-2xl bg-white/10 p-3.5 hover:bg-white/15";
+              const body = (
+                <>
                   <Ico size={30} weight="duotone" color={item.color} />
                   <span className="font-semibold leading-snug">{item.label}</span>
-                </Link>
+                </>
               );
+              // ลิงก์ไปอีกระบบ: <a> ธรรมดา แท็บเดิม
+              return item.external
+                ? <a key={item.href} href={item.href} className={cls}>{body}</a>
+                : <Link key={item.href} href={item.href} className={cls}>{body}</Link>;
             })}
           </div>
           <div className="px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"><UserBox name={name} roles={profile.roles} /></div>
@@ -131,11 +138,18 @@ export function AppShell({ profile, schoolName, children }: { profile: Profile; 
 
 function SideLink({ item, active, collapsed }: { item: NavItem; active: boolean; collapsed: boolean }) {
   const Ico = ICONS[item.icon];
-  return (
-    <Link href={item.href} aria-current={active ? "page" : undefined} title={collapsed ? item.label : undefined}
-      className={`flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-[0.9375rem] font-semibold ${active ? "bg-white text-navy-700" : "text-sky-50 hover:bg-white/10"}`}>
+  const cls = `flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-[0.9375rem] font-semibold ${active ? "bg-white text-navy-700" : "text-sky-50 hover:bg-white/10"}`;
+  const body = (
+    <>
       <Ico size={22} weight="duotone" color={active ? undefined : item.color} className="shrink-0" />
       {!collapsed && <span className="truncate">{item.label}</span>}
+    </>
+  );
+  // ลิงก์ไปอีกระบบ: <a> ธรรมดา แท็บเดิม
+  if (item.external) return <a href={item.href} title={collapsed ? item.label : undefined} className={cls}>{body}</a>;
+  return (
+    <Link href={item.href} aria-current={active ? "page" : undefined} title={collapsed ? item.label : undefined} className={cls}>
+      {body}
     </Link>
   );
 }
@@ -175,6 +189,14 @@ function UserMenu({ name }: { name: string }) {
           <Sparkle size={20} weight="duotone" /> ดูทัวร์อีกครั้ง
         </button>
         <Link href="/manual" className="flex min-h-11 items-center gap-3 rounded-xl px-3 hover:bg-slate-50"><BookOpen size={20} weight="duotone" /> คู่มือการใช้งาน</Link>
+        {EXTERNAL_ITEMS.map((item) => {
+          const Ico = ICONS[item.icon];
+          return (
+            <a key={item.href} href={item.href} className="flex min-h-11 items-center gap-3 rounded-xl px-3 hover:bg-slate-50">
+              <Ico size={20} weight="duotone" /> {item.label}
+            </a>
+          );
+        })}
         <button type="button" onClick={logout} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-red-700 hover:bg-red-50">
           <SignOut size={20} weight="duotone" /> ออกจากระบบ
         </button>
