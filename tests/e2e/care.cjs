@@ -2,7 +2,8 @@
 const { chromium } = require("playwright");
 const { execSync } = require("child_process");
 const SHOT = (process.env.SHOT_DIR || "/tmp/tsr-shots") + "/care-";
-const BASE = "http://localhost:3000";
+// ระบบอยู่ใต้ /sis (basePath) · E2E_ORIGIN ใช้ทดสอบผ่าน reverse proxy ได้
+const BASE = (process.env.E2E_ORIGIN || "http://localhost:3000") + "/sis";
 const sql = (q) => execSync(`psql "${process.env.E2E_DB || "postgres://postgres@127.0.0.1:54329/tsr_e2e"}" -Atc "${q}"`).toString().trim();
 const step = (s) => console.log("▶", s);
 const assert = (c, m) => { if (!c) throw new Error(m); };
@@ -12,7 +13,7 @@ async function login(page, user) {
   await page.fill("#username", user);
   await page.fill("#password", "pass1234");
   await page.click("button[type=submit]");
-  await page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 15000 });
+  await page.waitForURL((u) => !u.pathname.startsWith("/sis/login"), { timeout: 15000 });
 }
 
 (async () => {
@@ -72,7 +73,7 @@ async function login(page, user) {
 
   step("เยี่ยมบ้าน: ข้อมูลจาก DMC เติมให้ ระบุ GPS เลือกความเสี่ยง แล้วบันทึก");
   await t.goto(BASE + "/care?tab=visits");
-  await t.locator('a[href^="/care/visit/"]').first().click();
+  await t.locator('a[href^="/sis/care/visit/"]').first().click();
   await t.waitForURL("**/care/visit/**");
   await t.getByRole("button", { name: "ระบุตำแหน่งปัจจุบัน" }).click();
   await t.getByText("15.6935, 100.1267").waitFor();
@@ -98,7 +99,7 @@ async function login(page, user) {
   assert(Number(sql("select count(*) from screenings where learning = 3")) <= 1, "ด้านการเรียนถูกเสนอเป็นมีปัญหาเกินจริง");
 
   step("หน้าแรก: แจ้งเตือนนักเรียนกลุ่มเสี่ยงที่ยังไม่มีบันทึกช่วยเหลือ");
-  await t.goto(BASE + "/");
+  await t.goto(BASE);
   await t.getByText("ยังไม่มีบันทึกการช่วยเหลือเกิน 14 วัน").waitFor({ timeout: 5000 }).catch(() => { throw new Error("ไม่พบการแจ้งเตือนดูแลช่วยเหลือที่หน้าแรก"); });
   await t.screenshot({ path: SHOT + "08-home.png", fullPage: true });
 
@@ -116,8 +117,8 @@ async function login(page, user) {
   await t.getByRole("combobox", { name: "สถานะ" }).selectOption("improved");
   await t.getByText("เปลี่ยนสถานะแล้ว").waitFor();
   assert(sql("select status from interventions") === "improved", "เปลี่ยนสถานะไม่สำเร็จ");
-  await t.goto(BASE + "/");
-  assert(!(await t.locator(`a[href="/students/${sid}?tab=care"]`).count()), "บันทึกช่วยเหลือแล้วแต่ยังแจ้งเตือนอยู่");
+  await t.goto(BASE);
+  assert(!(await t.locator(`a[href="/sis/students/${sid}?tab=care"]`).count()), "บันทึกช่วยเหลือแล้วแต่ยังแจ้งเตือนอยู่");
 
   step("ผู้ดูแลระบบ: ตั้งช่วงปกติ EQ แล้วระบบแปลผลเดิมใหม่ / ดูภาพรวมโรงเรียน");
   const actx = await browser.newContext({ viewport: { width: 1180, height: 820 } });

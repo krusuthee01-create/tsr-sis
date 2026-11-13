@@ -17,6 +17,7 @@ import { Tour } from "./tour";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/supabase/server";
 import { ROLES } from "@/lib/domain";
+import { withBase } from "@/lib/base-path";
 
 const ICONS: Record<NavItem["icon"], Icon> = {
   home: House, check: CheckSquare, subject: Chalkboard, students: Student, rooms: DoorOpen,
@@ -51,7 +52,7 @@ export function AppShell({ profile, schoolName, children }: { profile: Profile; 
       {/* เมนูด้านข้าง: iPad แนวนอนและคอมพิวเตอร์ */}
       <aside className={`no-print sticky top-0 hidden h-dvh shrink-0 flex-col gap-1 overflow-y-auto bg-navy-700 px-3 py-4 text-white lg:flex ${collapsed ? "w-[4.75rem]" : "w-64"}`}>
         <div className="mb-3 flex items-center gap-3 px-1.5">
-          <Image src="/icons/logo.png" alt="ตราโรงเรียน" width={44} height={44} className="size-11 rounded-full bg-white p-0.5" priority />
+          <Image src={withBase("/icons/logo.png")} alt="ตราโรงเรียน" width={44} height={44} className="size-11 rounded-full bg-white p-0.5" priority />
           {!collapsed && (
             <div className="min-w-0 leading-tight">
               <p className="font-display font-semibold">TSR-SIS</p>
@@ -72,7 +73,7 @@ export function AppShell({ profile, schoolName, children }: { profile: Profile; 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="no-print sticky top-0 z-30 flex items-center gap-2 border-b border-line bg-white/95 px-3 py-2 backdrop-blur md:px-5">
           <Link href="/" className="flex items-center gap-2 lg:hidden" aria-label="หน้าแรก">
-            <Image src="/icons/logo.png" alt="" width={36} height={36} className="size-9 rounded-full" />
+            <Image src={withBase("/icons/logo.png")} alt="" width={36} height={36} className="size-9 rounded-full" />
             <span className="font-display font-semibold text-navy-700">TSR-SIS</span>
           </Link>
           <div className="flex-1" />
@@ -107,7 +108,7 @@ export function AppShell({ profile, schoolName, children }: { profile: Profile; 
       {menuOpen && (
         <div className="no-print fixed inset-0 z-40 flex flex-col bg-navy-700 text-white lg:hidden" role="dialog" aria-modal="true" aria-label="เมนูทั้งหมด">
           <div className="flex items-center gap-3 px-4 py-3">
-            <Image src="/icons/logo.png" alt="" width={40} height={40} className="size-10 rounded-full bg-white p-0.5" />
+            <Image src={withBase("/icons/logo.png")} alt="" width={40} height={40} className="size-10 rounded-full bg-white p-0.5" />
             <p className="flex-1 font-display text-lg font-semibold">เมนูทั้งหมด</p>
             <button type="button" onClick={() => setMenuOpen(false)} aria-label="ปิดเมนู" className="rounded-xl bg-white/15 p-2.5"><X size={24} /></button>
           </div>

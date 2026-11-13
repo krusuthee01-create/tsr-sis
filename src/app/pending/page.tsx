@@ -2,6 +2,7 @@ import Image from "next/image";
 import { redirect } from "next/navigation";
 import { getProfile, supabaseServer } from "@/lib/supabase/server";
 import { PendingActions } from "./pending-actions";
+import { withBase } from "@/lib/base-path";
 
 export const metadata = { title: "รออนุมัติ" };
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export default async function PendingPage() {
   return (
     <div className="flex min-h-dvh items-center justify-center p-4">
       <div className="flex w-full max-w-md flex-col items-center gap-4 rounded-[2rem] bg-white p-7 text-center shadow-xl">
-        <Image src="/icons/logo.png" alt="ตราโรงเรียน" width={88} height={88} className="size-22 rounded-full" />
+        <Image src={withBase("/icons/logo.png")} alt="ตราโรงเรียน" width={88} height={88} className="size-22 rounded-full" />
         {!profile ? (
           <>
             <h1 className="text-xl font-semibold">ไม่พบบัญชีในทะเบียนครู</h1>

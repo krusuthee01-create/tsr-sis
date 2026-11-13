@@ -357,3 +357,115 @@ test("เมนูสลับระบบ / ลงเวลา (แบบ ก �
   assert.equal(isActive("/students/1", "/students"), true);
   assert.deepEqual(BOTTOM_NAV, ["/", "/attendance", "/students", "/reports"]);
 });
+
+// ---------------- /sis: เปิดใต้ที่อยู่เดียวกับระบบลงเวลา (gotime.anubantep.ac.th/sis) ----------------
+
+test("basePath /sis และ withBase", async () => {
+  const { BASE_PATH, withBase } = await import("../src/lib/base-path.ts");
+  const config = (await import("../next.config.ts")).default;
+  assert.equal(BASE_PATH, "/sis");
+  assert.equal(config.basePath, BASE_PATH);
+  assert.equal(withBase("/"), "/sis");
+  assert.equal(withBase("/auth/callback"), "/sis/auth/callback");
+  assert.equal(withBase("/attendance?c=1&k=line"), "/sis/attendance?c=1&k=line");
+  assert.throws(() => withBase("attendance"));
+  assert.throws(() => withBase("//evil.test/x"));
+});
+
+test("ที่อยู่เดิม (ไม่มี /sis) redirect ไป /sis — ยกเว้น /sis เอง และ /_next", async () => {
+  const { createRequire } = await import("node:module");
+  const require = createRequire(import.meta.url);
+  const { getPathMatch } = require("next/dist/shared/lib/router/utils/path-match.js");
+  const config = (await import("../next.config.ts")).default;
+  const rules = await config.redirects!();
+  assert.ok(rules.every((r) => r.basePath === false && r.permanent === false), "ต้องเป็น redirect ชั่วคราวนอก basePath");
+  // จำลองการทำงานของ Next: กฎแรกที่ตรงชนะ แล้วแทน :path ใน destination
+  const resolve = (path: string): string | null => {
+    for (const r of rules) {
+      const m = getPathMatch(r.source, { strict: true, removeUnnamedParams: true })(path);
+      if (m) return r.destination.replace(":path", m.path ?? "");
+    }
+    return null;
+  };
+  assert.equal(resolve("/"), "/sis");
+  assert.equal(resolve("/attendance"), "/sis/attendance");
+  assert.equal(resolve("/login"), "/sis/login");
+  assert.equal(resolve("/auth/callback"), "/sis/auth/callback"); // ลิงก์ Google ที่ค้างอยู่ระหว่าง deploy
+  assert.equal(resolve("/students/abc"), "/sis/students/abc");
+  assert.equal(resolve("/manifest.webmanifest"), "/sis/manifest.webmanifest");
+  assert.equal(resolve("/icons/icon-192.png"), "/sis/icons/icon-192.png");
+  assert.equal(resolve("/sisters"), "/sis/sisters");
+  for (const keep of ["/sis", "/sis/", "/sis/attendance", "/sis/_next/static/x.js", "/_next/static/x.js"]) {
+    assert.equal(resolve(keep), null, keep);
+  }
+});
+
+test("คุกกี้เข้าสู่ระบบอยู่ที่ /sis และย้ายคุกกี้รุ่นเก่า (path /) ครั้งเดียว", async () => {
+  const c = await import("../src/lib/supabase/cookies.ts");
+  assert.deepEqual(c.AUTH_COOKIE_OPTIONS, { path: "/sis" });
+  const key = c.authStorageKey("https://abcdefghij.supabase.co");
+  assert.equal(key, "sb-abcdefghij-auth-token");
+  assert.equal(c.isAuthCookie("sb-abcdefghij-auth-token.0", key), true);
+  assert.equal(c.isAuthCookie("sb-abcdefghij-auth-token-code-verifier", key), true);
+  // คุกกี้ของระบบลงเวลา (คนละโปรเจกต์ Supabase) บน origin เดียวกัน — ห้ามแตะ
+  assert.equal(c.isAuthCookie("sb-zyxwvutsrq-auth-token", key), false);
+  const plan = c.planCookieMigration([
+    { name: "sb-abcdefghij-auth-token.0", value: "A" },
+    { name: "sb-abcdefghij-auth-token.1", value: "B" },
+    { name: "sb-zyxwvutsrq-auth-token", value: "G" },
+    { name: "tsr-font", value: "1" },
+  ], key);
+  assert.equal(plan.done, false);
+  assert.deepEqual(plan.copy, [{ name: "sb-abcdefghij-auth-token.0", value: "A" }, { name: "sb-abcdefghij-auth-token.1", value: "B" }]);
+  assert.deepEqual(plan.clear, ["sb-abcdefghij-auth-token.0", "sb-abcdefghij-auth-token.1"]);
+  // ย้ายแล้ว: ไม่ทำซ้ำ (ไม่เขียนทับคุกกี้ /sis ด้วยค่าที่อาจเก่ากว่า)
+  assert.deepEqual(c.planCookieMigration([{ name: c.MIGRATED_COOKIE, value: "1" }, { name: key, value: "X" }], key), { done: true, copy: [], clear: [] });
+  assert.equal(c.clearRootCookieHeader(key), `${key}=; Path=/; Max-Age=0; SameSite=Lax`);
+});
+
+test("manifest และ service worker อยู่ใต้ /sis และไม่แตะคำขอ/แคชของระบบอื่นบน origin เดียวกัน", async () => {
+  const { readFileSync } = await import("node:fs");
+  const vm = await import("node:vm");
+  const manifest = JSON.parse(readFileSync(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"));
+  assert.equal(manifest.start_url, "/sis");
+  assert.equal(manifest.scope, "/sis");
+  for (const i of [...manifest.icons, ...manifest.shortcuts.flatMap((s: { icons: unknown[] }) => s.icons)]) assert.match(i.src, /^\/sis\/icons\//);
+  for (const s of manifest.shortcuts) assert.match(s.url, /^\/sis\//);
+
+  const load = (file: string, extraKeys: string[] = []) => {
+    const handlers: Record<string, (e: unknown) => void> = {};
+    const deleted: string[] = [];
+    const sandbox = {
+      self: { addEventListener: (t: string, fn: (e: unknown) => void) => { handlers[t] = fn; }, location: { origin: "https://gotime.test" },
+        skipWaiting: () => Promise.resolve(), clients: { claim: () => Promise.resolve() }, registration: { unregister: () => Promise.resolve(true) } },
+      caches: { keys: async () => ["shell-v2", "tsr-v1-pages", "tsr-v1-static", "tsr-v2-pages", "other", ...extraKeys], delete: async (k: string) => { deleted.push(k); return true; },
+        open: async () => ({ addAll: async () => {}, put: async () => {} }), match: async () => undefined },
+      fetch: async () => new Response("ok"), Response, URL, Promise,
+    };
+    vm.runInNewContext(readFileSync(new URL(`../public/${file}`, import.meta.url), "utf8"), sandbox);
+    return { handlers, deleted };
+  };
+  const sw = load("sw.js");
+  const handled = (url: string, mode = "navigate") => {
+    let called = false;
+    sw.handlers.fetch({ request: { method: "GET", url, mode, headers: { get: () => null } }, respondWith: () => { called = true; } });
+    return called;
+  };
+  // หน้า/ไฟล์ของระบบลงเวลา (origin เดียวกัน) — ไม่แตะ
+  for (const u of ["/", "/start", "/offline", "/_next/static/a.js", "/icons/icon-192.png", "/sisx"]) assert.equal(handled("https://gotime.test" + u, u.includes(".") ? "no-cors" : "navigate"), false, u);
+  // ของ TSR-SIS
+  assert.equal(handled("https://gotime.test/sis"), true);
+  assert.equal(handled("https://gotime.test/sis/attendance?c=1"), true);
+  assert.equal(handled("https://gotime.test/sis/_next/static/a.js", "no-cors"), true);
+  assert.equal(handled("https://gotime.test/sis/login"), false);
+  assert.equal(handled("https://gotime.test/sis/auth/callback?code=x"), false);
+  let wait: Promise<unknown> = Promise.resolve();
+  sw.handlers.activate({ waitUntil: (p: Promise<unknown>) => { wait = p; } });
+  await wait;
+  // ไม่ลบ shell-v2 ของระบบลงเวลา · tsr-v1 หน้าเว็บลบพร้อมถอนตัวเก่า · tsr-v2 คือรุ่นปัจจุบัน
+  assert.deepEqual(sw.deleted, []);
+  const later = load("sw.js", ["tsr-v3-pages"]);
+  later.handlers.activate({ waitUntil: (p: Promise<unknown>) => { wait = p; } });
+  await wait;
+  assert.deepEqual(later.deleted, ["tsr-v3-pages"]); // รุ่นอื่นของ TSR-SIS ลบได้
+});

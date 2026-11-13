@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { Badge, Card, EmptyState, LinkButton } from "@/components/ui";
 import { ExportButton } from "@/components/export-button";
 import { classroomName, fullName, gradeSort, STUDENT_STATUSES } from "@/lib/domain";
+import { withBase } from "@/lib/base-path";
 
 export const metadata = { title: "ทะเบียนนักเรียน" };
 
@@ -71,7 +72,7 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
 
       <Card className="mb-3 flex flex-col gap-3">
         {can(profile, "admin", "executive", "guidance") && (
-          <form className="flex gap-2" action="/students">
+          <form className="flex gap-2" action={withBase("/students")}>
             <input type="hidden" name="y" value={year} />
             <label htmlFor="q" className="sr-only">ค้นหานักเรียน</label>
             <input id="q" name="q" defaultValue={q} className="field-input" placeholder="ค้นหาชื่อ ชื่อเล่น รหัสนักเรียน หรือเลขประชาชน 13 หลัก" />

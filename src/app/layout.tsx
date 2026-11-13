@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Noto_Sans_Thai, Prompt, Sarabun } from "next/font/google";
 import { ToastProvider } from "@/components/toast";
 import { ServiceWorker } from "@/components/service-worker";
+import { withBase } from "@/lib/base-path";
 import "./globals.css";
 
 const noto = Noto_Sans_Thai({ subsets: ["thai", "latin"], weight: ["400", "500", "600", "700"], variable: "--font-noto", display: "swap" });
@@ -11,10 +12,10 @@ const sarabun = Sarabun({ subsets: ["thai", "latin"], weight: ["400", "700"], va
 export const metadata: Metadata = {
   title: { default: "ระบบสารสนเทศนักเรียน", template: "%s · TSR-SIS" },
   description: "ระบบสารสนเทศนักเรียน โรงเรียนอนุบาลเทพสุนทรินทร์",
-  manifest: "/manifest.webmanifest",
+  manifest: withBase("/manifest.webmanifest"),
   applicationName: "TSR-SIS",
   appleWebApp: { capable: true, title: "TSR-SIS", statusBarStyle: "default" },
-  icons: { icon: "/icons/icon-192.png", apple: "/icons/apple-touch-icon.png" },
+  icons: { icon: withBase("/icons/icon-192.png"), apple: withBase("/icons/apple-touch-icon.png") },
   robots: { index: false, follow: false },
 };
 

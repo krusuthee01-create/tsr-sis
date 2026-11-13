@@ -5,7 +5,8 @@ const CHROMIUM = process.env.CHROMIUM_PATH || undefined;
 const { execSync } = require("child_process");
 const SHOT = (process.env.SHOT_DIR || "/tmp/tsr-shots") + "/";
 const FAKE_DMC = process.env.FAKE_DMC || "/tmp/tsr-fake-dmc.xlsx";
-const BASE = "http://localhost:3000";
+// ระบบอยู่ใต้ /sis (basePath) · E2E_ORIGIN ใช้ทดสอบผ่าน reverse proxy ได้
+const BASE = (process.env.E2E_ORIGIN || "http://localhost:3000") + "/sis";
 const sql = (q) => execSync(`psql "${process.env.E2E_DB || "postgres://postgres@127.0.0.1:54329/tsr_e2e"}" -Atc "${q}"`).toString().trim();
 const step = (s) => console.log("▶", s);
 
@@ -14,7 +15,7 @@ async function login(page, user) {
   await page.fill("#username", user);
   await page.fill("#password", "pass1234");
   await page.click("button[type=submit]");
-  await page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 15000 });
+  await page.waitForURL((u) => !u.pathname.startsWith("/sis/login"), { timeout: 15000 });
 }
 async function skipTour(page) {
   const skip = page.getByRole("button", { name: "ข้าม" });
@@ -135,7 +136,7 @@ async function skipTour(page) {
   if (brush.startsWith("0")) throw new Error("ส่งข้อมูลหลังออนไลน์ไม่สำเร็จ");
 
   step("ครูดูหน้าแรก รายงาน และประวัตินักเรียน");
-  await t.goto(BASE + "/");
+  await t.goto(BASE);
   await t.screenshot({ path: SHOT + "13-home-after.png", fullPage: true });
   await t.goto(BASE + "/reports");
   await t.screenshot({ path: SHOT + "14-report-teacher.png", fullPage: true });
@@ -148,10 +149,10 @@ async function skipTour(page) {
 
   step("ครูพยายามเปิดหน้าตั้งค่า → ถูกพากลับหน้าแรก");
   await t.goto(BASE + "/settings");
-  if (new URL(t.url()).pathname !== "/") throw new Error("ครูเข้าหน้าตั้งค่าได้");
+  if (new URL(t.url()).pathname !== "/sis") throw new Error("ครูเข้าหน้าตั้งค่าได้");
 
   step("ผู้ดูแลระบบดูหน้าแรก รายงานรายวัน และประวัติการแก้ไข");
-  await a.goto(BASE + "/");
+  await a.goto(BASE);
   await a.screenshot({ path: SHOT + "17-home-admin.png", fullPage: true });
   await a.goto(BASE + "/reports?tab=daily");
   await a.screenshot({ path: SHOT + "18-report-daily.png", fullPage: true });

@@ -2,7 +2,8 @@
 const { chromium } = require("playwright");
 const { execSync } = require("child_process");
 const SHOT = (process.env.SHOT_DIR || "/tmp/tsr-shots") + "/numbers-";
-const BASE = "http://localhost:3000";
+// ระบบอยู่ใต้ /sis (basePath) · E2E_ORIGIN ใช้ทดสอบผ่าน reverse proxy ได้
+const BASE = (process.env.E2E_ORIGIN || "http://localhost:3000") + "/sis";
 const sql = (q) => execSync(`psql "${process.env.E2E_DB || "postgres://postgres@127.0.0.1:54329/tsr_e2e"}" -Atc "${q}"`).toString().trim();
 const step = (s) => console.log("▶", s);
 const assert = (c, m) => { if (!c) throw new Error(m); };
@@ -15,7 +16,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
   const t = await (await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })).newPage();
   t.on("pageerror", (e) => errors.push(e.message));
   await t.goto(BASE + "/login"); await t.fill("#username", "krusomjai"); await t.fill("#password", "pass1234"); await t.click("button[type=submit]");
-  await t.waitForURL((u) => !u.pathname.startsWith("/login"));
+  await t.waitForURL((u) => !u.pathname.startsWith("/sis/login"));
 
   step("ครูที่ปรึกษาเปิดทะเบียนนักเรียน → จัดเลขที่");
   await t.goto(`${BASE}/students?c=${room}`);
