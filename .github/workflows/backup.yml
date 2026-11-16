@@ -28,8 +28,25 @@ jobs:
           gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" --symmetric --cipher-algo AES256 -o "$name.dump.gpg" "$name.dump"
           rm "$name.dump"
           echo "NAME=$name" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          path: repo
+      - name: สำรองรูปเยี่ยมบ้าน (ทำเมื่อตั้ง SUPABASE_URL และ SUPABASE_SERVICE_ROLE_KEY ไว้)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "ข้ามการสำรองรูป: ยังไม่ได้ตั้ง secret SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY"
+            exit 0
+          fi
+          node repo/scripts/backup-storage.mjs photos
+          tar -czf "$NAME-photos.tar.gz" -C photos .
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" --symmetric --cipher-algo AES256 -o "$NAME-photos.tar.gz.gpg" "$NAME-photos.tar.gz"
+          rm -rf photos "$NAME-photos.tar.gz"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.NAME }}
-          path: ${{ env.NAME }}.dump.gpg
+          path: ${{ env.NAME }}*.gpg
           retention-days: 90
