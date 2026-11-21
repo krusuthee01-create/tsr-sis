@@ -103,11 +103,26 @@ async function register(page, file, subject, secret) {
   await c.getByRole("heading", { name: "เสนอผู้อำนวยการ" }).waitFor();
   ok(sql(`select string_agg(kind || version, ',' order by created_at) from saraban_files where book_id = '${bookId}'`) === "original1,stamped1", "ลงรับแล้ว มีต้นฉบับและฉบับประทับตรารับ");
 
-  step("ธุรการเสนอ ผอ.");
-  await c.getByRole("button", { name: "เรียน ผู้อำนวยการ เพื่อโปรดพิจารณา", exact: true }).tap();
+  step("ธุรการเสนอ ผอ. (คำเสนอ 2 บรรทัด แตะวางในพื้นที่ว่างของหน้าเอกสาร)");
+  await c.getByRole("button", { name: "เรียน ผอ.", exact: true }).tap();
+  await c.getByRole("button", { name: "เพื่อโปรดพิจารณา", exact: true }).tap();
+  ok((await c.locator("#propose-note").inputValue()) === "เรียน ผอ.\nเพื่อโปรดพิจารณา", "ชิปคำเสนอเพิ่มทีละบรรทัด");
   await c.getByRole("button", { name: "เสนอ ผอ.", exact: true }).tap();
+  await c.getByText("วางคำเสนอและยืนยัน").waitFor();
+  await c.getByAltText("ตัวอย่างคำเกษียน").waitFor();
+  // แตะพื้นที่ว่างบนภาพหน้า (ซ้าย ค่อนลง) → คำเสนอย้ายไปวางตรงนั้น
+  const pageView = c.getByRole("application", { name: /ภาพหน้าเอกสาร/ });
+  await pageView.locator("canvas").waitFor();
+  await c.waitForTimeout(500);
+  const pv = await pageView.boundingBox();
+  await c.mouse.click(pv.x + pv.width * 0.1, pv.y + pv.height * 0.55);
+  const img = await c.getByAltText("ตัวอย่างคำเกษียน").boundingBox();
+  ok(Math.abs(img.x - (pv.x + pv.width * 0.1)) < 3 && Math.abs(img.y - (pv.y + pv.height * 0.55)) < 3, "แตะแล้วคำเสนอย้ายไปวางตรงจุดที่แตะ");
+  await c.screenshot({ path: SHOT + "00-clerk-place.png" });
+  await c.getByRole("button", { name: "ยืนยัน", exact: true }).tap();
   await c.getByText("เสนอ ผอ. แล้ว").waitFor();
   ok(sql(`select status from saraban_books where id = '${bookId}'`) === "proposed", "สถานะ proposed");
+  ok(sql(`select file_id is not null from saraban_actions where book_id = '${bookId}' and action = 'propose'`) === "t", "คำเสนอลงนามลงไฟล์ฉบับใหม่");
 
   step("ธุรการลงรับหนังสือลับ (ไม่มอบใคร)");
   const secretId = await register(c, SHOT + "secret.pdf", "หนังสือลับทดสอบ", true);
@@ -151,10 +166,12 @@ async function register(page, file, subject, secret) {
   step("ผอ. เกษียน: คำสั่ง → หัวหน้ากลุ่มงาน → ลงนาม → ยืนยัน (วัดช่วง server action)");
   await d.goto(BASE + "/saraban/book/" + bookId);
   await d.getByRole("heading", { name: "เกษียนหนังสือ", exact: true }).waitFor();
-  await d.getByRole("button", { name: "ทราบ ดำเนินการ", exact: true }).tap();
+  await d.getByRole("button", { name: "ทราบ", exact: true }).tap();
   await d.getByRole("button", { name: /วิไล/ }).tap();
   await d.getByRole("button", { name: "ลงนาม", exact: true }).tap();
-  await d.getByText("ยืนยันการลงนาม").waitFor();
+  await d.getByText("วางคำเกษียนและยืนยันลงนาม").waitFor();
+  // ตำแหน่งเริ่มต้นวางให้แล้ว (มุมล่างขวา) — ผอ. ไม่ต้องแตะเลือก (ยังเป็น 4 แตะ)
+  await d.getByAltText("ตัวอย่างคำเกษียน").waitFor();
   // จับเวลาเริ่มคำขอ server action ทุกตัว (finalizeUpload ตอนอัปโหลด และ endorseBook ตัวสุดท้าย) และเวลาที่ toast ขึ้น
   const actionStarts = [];
   d.on("request", (r) => { if (r.method() === "POST" && r.headers()["next-action"]) actionStarts.push(Date.now()); });
@@ -197,6 +214,9 @@ async function register(page, file, subject, secret) {
   await h.getByLabel(/ครูดี/).check();
   await h.getByRole("button", { name: "ดำเนินการตามหนังสือ", exact: true }).tap();
   await h.getByRole("button", { name: /^มอบหมาย/ }).tap();
+  await h.getByText("วางข้อความและยืนยันมอบหมาย").waitFor();
+  await h.getByAltText("ตัวอย่างคำเกษียน").waitFor();
+  await h.getByRole("button", { name: "ยืนยัน", exact: true }).tap();
   await h.getByText(/มอบหมายแล้ว/).first().waitFor();
   ok(sql(`select status from saraban_books where id = '${bookId}'`) === "assigned", "สถานะ assigned");
   // หัวหน้าที่ไม่ได้รับมอบหมายก็ต้องไม่เห็นหนังสือลับ

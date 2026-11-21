@@ -1,5 +1,5 @@
 // ข้อมูลหน้าหนังสือและฟังก์ชันล้วน (ใช้ได้ทั้งเซิร์ฟเวอร์/เบราว์เซอร์ และทดสอบด้วย node ได้)
-import type { BookStatus, FileKind, SarabanRole, Urgency } from "./types.ts";
+import type { BookStatus, DocType, FileKind, SarabanRole, Urgency } from "./types.ts";
 
 export type BookFile = { id: string; kind: FileKind; version: number; name: string; size_bytes: number; created_at: string };
 export type BookAction = {
@@ -9,7 +9,7 @@ export type BookAction = {
 export type BookRecipient = { staff_id: string; name: string; read_at: string | null; assigned_by: string | null; assigned_at: string };
 export type BookRow = {
   id: string; year: number; receive_no: number; doc_no: string | null; doc_date: string | null; from_org: string;
-  to_text: string | null; subject: string; urgency: Urgency; secret: boolean; due_date: string | null;
+  to_text: string | null; subject: string; doc_type: DocType; ref_text: string | null; detail: string | null; urgency: Urgency; secret: boolean; due_date: string | null;
   status: BookStatus; current_holder: string | null; holder_name: string | null; received_at: string; created_by: string | null;
 };
 export type BookDetail = { book: BookRow; files: BookFile[]; actions: BookAction[]; recipients: BookRecipient[] };
@@ -21,8 +21,8 @@ export const PRESET_ROLES: readonly PresetRole[] = ["director", "clerk", "head"]
 
 /** คำสั่งสำเร็จรูปตั้งต้น (ใช้เมื่อยังไม่ได้ตั้งค่าในหน้าตั้งค่า) */
 export const DEFAULT_PRESETS: Record<PresetRole, string[]> = {
-  clerk: ["เรียน ผู้อำนวยการ เพื่อโปรดทราบ", "เรียน ผู้อำนวยการ เพื่อโปรดพิจารณา", "เรียน ผู้อำนวยการ เพื่อโปรดพิจารณาสั่งการ"],
-  director: ["ทราบ ดำเนินการ", "ทราบ แจ้งผู้เกี่ยวข้อง", "อนุญาต", "ทราบ/จัดเก็บ"],
+  clerk: ["เรียน ผอ.", "เพื่อโปรดทราบ", "เพื่อทราบ/ประชาสัมพันธ์", "เพื่อโปรดพิจารณา", "เพื่อโปรดพิจารณาสั่งการ"],
+  director: ["ทราบ", "แจ้งหนังสือเวียนให้ครูทุกคนทราบ", "มอบผู้เกี่ยวข้องดำเนินการ", "อนุญาต", "ดำเนินการและรายงานผล"],
   head: ["ดำเนินการตามหนังสือ", "แจ้งเพื่อทราบ", "ดำเนินการและรายงานผล"],
 };
 
@@ -34,6 +34,7 @@ export const ACTION_LABEL: Record<string, string> = {
   close: "ทราบ/จัดเก็บ",
   read: "อ่านแล้ว",
   renumber: "แก้เลขรับ",
+  return: "ส่งคืนงานธุรการ",
   delete: "ลบ",
   upload: "แนบไฟล์",
 };
@@ -82,6 +83,47 @@ export function endorsementPlacement(
   const width = png.width * k, height = png.height * k;
   const x = left ? margin : page.width - width - margin;
   return { appendPage: false, box: { page: 0, x, y: margin, width, height } };
+}
+
+export type PlaceBox = { page: number; x: number; y: number; width: number; height: number };
+
+/**
+ * ผู้ลงนามแตะ/คลิกบนภาพหน้าเอกสาร: จุดที่แตะคือมุมซ้ายบนของคำเกษียน (แบบระบบเดิมของโรงเรียน)
+ * fx, fy = สัดส่วนตำแหน่งบนภาพหน้า (0–1 จากซ้ายบน) → กล่องในพิกัด PDF (point จากซ้ายล่าง) ไม่ล้นขอบหน้า
+ */
+export function placeAtTap(
+  tap: { fx: number; fy: number },
+  page: { width: number; height: number },
+  png: { width: number; height: number },
+  pageIndex: number,
+  margin = 6,
+): PlaceBox {
+  const k = Math.min(1, (page.width - margin * 2) / png.width, (page.height - margin * 2) / png.height);
+  const width = png.width * k, height = png.height * k;
+  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
+  const fx = Number.isFinite(tap.fx) ? tap.fx : 0, fy = Number.isFinite(tap.fy) ? tap.fy : 0;
+  const x = clamp(fx * page.width, margin, page.width - width - margin);
+  const top = clamp(fy * page.height, margin, page.height - height - margin);
+  return { page: pageIndex, x, y: page.height - top - height, width, height };
+}
+
+/**
+ * คำสั่งสำเร็จรูปแบบหลายบรรทัด (เหมือน "บรรทัดที่ 1–4" ของระบบเดิม): แตะครั้งแรกเพิ่มเป็นบรรทัดใหม่ แตะซ้ำเอาออก
+ * bullet = "- " สำหรับคำสั่งการของ ผอ./หัวหน้า, "" สำหรับคำเสนอของธุรการ
+ */
+export function toggleNoteLine(note: string, text: string, bullet = "- "): string {
+  const line = bullet + text.trim();
+  const lines = note.split(/\r?\n/).map((l) => l.trimEnd()).filter((l) => l.trim() !== "");
+  const i = lines.findIndex((l) => l.trim() === line.trim());
+  if (i >= 0) lines.splice(i, 1);
+  else lines.push(line);
+  return lines.join("\n");
+}
+
+/** บรรทัดคำสั่งนี้อยู่ในข้อความแล้วหรือยัง (ไว้แสดงชิปที่เลือก) */
+export function hasNoteLine(note: string, text: string, bullet = "- "): boolean {
+  const line = (bullet + text.trim()).trim();
+  return note.split(/\r?\n/).some((l) => l.trim() === line);
 }
 
 /**

@@ -1,20 +1,29 @@
 // ตรารับและคำเกษียนหนังสือ: จัดข้อความ + ฝัง PNG ลง PDF (ไม่ใช้โค้ดเฉพาะเบราว์เซอร์ เพื่อให้ทดสอบด้วย node ได้)
 import { PDFDocument } from "pdf-lib";
-import { formatThaiDate, formatTime } from "../thai-date.ts";
+import { formatThaiDate, thaiDigits } from "../thai-date.ts";
 
 /** ตัวคูณความละเอียดของ canvas */
 export const STAMP_SCALE = 3;
 
+/** ตรารับแบบเอกสารราชการ เลขไทย: รับที่ ๑๓๑๖ / วันที่ ๒๑ พฤศจิกายน ๒๕๖๙ / เวลา ๑๕:๑๑:๔๔ (เวลาไทย UTC+7) */
 export function receiveStampLines(s: { schoolName: string; receiveNo: number; year: number; receivedAt: string }): string[] {
-  // เวลาไทย (UTC+7) เป็นรูปแบบ HH.mm
-  const th = new Date(new Date(s.receivedAt).getTime() + 7 * 3600_000).toISOString().slice(0, 10);
+  const th = new Date(new Date(s.receivedAt).getTime() + 7 * 3600_000).toISOString();
   return [
     s.schoolName,
-    `รับที่ ${s.receiveNo}/${s.year}`,
-    `วันที่ ${formatThaiDate(th, "long")}`,
-    `เวลา ${formatTime(s.receivedAt).replace(":", ".")} น.`,
+    `รับที่ ${thaiDigits(s.receiveNo)}`,
+    `วันที่ ${thaiDigits(formatThaiDate(th.slice(0, 10), "long"))}`,
+    `เวลา ${thaiDigits(th.slice(11, 19))}`,
   ];
 }
+
+/** วันที่ท้ายคำเกษียน: ๒๒/๑๑/๒๕๖๙ */
+export function endorsementDate(iso: string): string {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return thaiDigits(`${d}/${m}/${y + 543}`);
+}
+
+/** จำนวนบรรทัดท้ายคำเกษียน (ชื่อ, วันที่) ที่จัดกึ่งกลางใต้ลายเซ็น */
+export const ENDORSEMENT_FOOTER_LINES = 2;
 
 // อักขระที่ห้ามขึ้นต้นบรรทัด: สระบน/ล่าง วรรณยุกต์ ำ ะ า ๅ ๆ ฯ
 const NO_START = /^[\u0E2F\u0E30-\u0E3A\u0E45-\u0E4E]/;
@@ -60,8 +69,12 @@ function tokenize(para: string): { text: string; space: boolean }[] {
   return out;
 }
 
+/**
+ * บรรทัดคำเกษียน: ข้อความ (ตัดบรรทัดตามคำไทย) แล้วตามด้วยชื่อผู้ลงนามและวันที่เลขไทย (แบบระบบเดิมของโรงเรียน)
+ * position ไม่แสดงบนเอกสาร (เก็บไว้ในระบบ)
+ */
 export function endorsementLines(
-  e: { note: string; signerName: string; position: string; date: string },
+  e: { note: string; signerName: string; position?: string; date: string },
   maxChars = 48,
 ): string[] {
   const len = (x: string) => [...x].length;
@@ -91,7 +104,7 @@ export function endorsementLines(
     }
     if (cur) lines.push(cur);
   }
-  return [...lines, `(${e.signerName})`, e.position, formatThaiDate(e.date, "short")];
+  return [...lines, e.signerName, endorsementDate(e.date)];
 }
 
 /** ขนาดภาพ PNG เป็น point (อ่าน IHDR แล้วหาร STAMP_SCALE) */

@@ -7,7 +7,7 @@ import { Badge, Button, Card, SectionTitle } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { withBase } from "@/lib/base-path";
 import { formatThaiDate, formatThaiDateTime, todayISO } from "@/lib/thai-date";
-import { STATUS_LABEL, URGENCY_LABEL, type FileKind } from "@/lib/saraban/types";
+import { DOC_TYPE_LABEL, STATUS_LABEL, URGENCY_LABEL, type FileKind } from "@/lib/saraban/types";
 import { ACTION_LABEL, FILE_KIND_LABEL, latestFile, type BookDetail, type Preset, type StaffOption } from "@/lib/saraban/book";
 import { deleteBook, markRead, renumberBook } from "../../actions";
 import { attachPdf, readPdf } from "../../pdf-client";
@@ -48,9 +48,12 @@ export function BookView({ detail, me, staff, presets, schoolName }: {
           </div>
           <h2 className="text-lg font-semibold leading-snug">{book.subject}</h2>
           <dl className="grid grid-cols-[6.5rem_1fr] gap-x-3 gap-y-1 text-[0.9375rem]">
+            <dt className="text-muted">ชนิด</dt><dd>{DOC_TYPE_LABEL[book.doc_type] ?? DOC_TYPE_LABEL.external}</dd>
             <dt className="text-muted">เลขที่หนังสือ</dt><dd>{book.doc_no || "-"}{book.doc_date ? ` ลว. ${formatThaiDate(book.doc_date)}` : ""}</dd>
             <dt className="text-muted">จาก</dt><dd>{book.from_org}</dd>
             {book.to_text && <><dt className="text-muted">ถึง</dt><dd>{book.to_text}</dd></>}
+            {book.ref_text && <><dt className="text-muted">อ้างถึง</dt><dd>{book.ref_text}</dd></>}
+            {book.detail && <><dt className="text-muted">รายละเอียด</dt><dd className="whitespace-pre-wrap">{book.detail}</dd></>}
             <dt className="text-muted">ลงรับ</dt><dd>{formatThaiDateTime(book.received_at)}</dd>
             {book.due_date && <><dt className="text-muted">กำหนดเสร็จ</dt><dd className={overdue ? "font-semibold text-red-700" : ""}>{formatThaiDate(book.due_date)}</dd></>}
             {book.holder_name && <><dt className="text-muted">อยู่ที่</dt><dd>{book.holder_name}</dd></>}

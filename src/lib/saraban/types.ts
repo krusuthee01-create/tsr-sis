@@ -27,6 +27,18 @@ export const ROLE_LABEL: Record<SarabanRole, string> = {
   teacher: "ครู",
 };
 
+/** ชนิดหนังสือตามระเบียบสำนักนายกรัฐมนตรีว่าด้วยงานสารบรรณ */
+export type DocType = "external" | "internal" | "stamped" | "order" | "announce" | "record";
+export const DOC_TYPES: readonly DocType[] = ["external", "internal", "stamped", "order", "announce", "record"];
+export const DOC_TYPE_LABEL: Record<DocType, string> = {
+  external: "หนังสือภายนอก",
+  internal: "หนังสือภายใน",
+  stamped: "หนังสือประทับตรา",
+  order: "หนังสือสั่งการ",
+  announce: "หนังสือประชาสัมพันธ์",
+  record: "หนังสือที่เจ้าหน้าที่ทำขึ้นหรือรับไว้เป็นหลักฐาน",
+};
+
 export const FILE_KINDS: readonly FileKind[] = ["original", "stamped", "attachment"];
 
 /** ขนาด PDF สูงสุดที่รับ */
