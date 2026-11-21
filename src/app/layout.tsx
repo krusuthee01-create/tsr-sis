@@ -5,9 +5,9 @@ import { ServiceWorker } from "@/components/service-worker";
 import { withBase } from "@/lib/base-path";
 import "./globals.css";
 
-const noto = Noto_Sans_Thai({ subsets: ["thai", "latin"], weight: ["400", "500", "600", "700"], variable: "--font-noto", display: "swap" });
-const prompt = Prompt({ subsets: ["thai", "latin"], weight: ["500", "600", "700"], variable: "--font-prompt", display: "swap" });
-const sarabun = Sarabun({ subsets: ["thai", "latin"], weight: ["400", "700"], variable: "--font-sarabun", display: "swap" });
+const noto = Noto_Sans_Thai({ subsets: ["thai", "latin"], weight: ["400", "500", "600", "700"], variable: "--font-noto", display: "swap", preload: false });
+const prompt = Prompt({ subsets: ["thai", "latin"], weight: ["500", "600", "700"], variable: "--font-prompt", display: "swap", preload: false });
+const sarabun = Sarabun({ subsets: ["thai", "latin"], weight: ["400", "700"], variable: "--font-sarabun", display: "swap", preload: false });
 
 export const metadata: Metadata = {
   title: { default: "ระบบสารสนเทศนักเรียน", template: "%s · TSR-SIS" },

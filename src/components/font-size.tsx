@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabaseBrowser } from "@/lib/supabase/client";
 
 const STEPS = [0.9, 1, 1.125, 1.25, 1.4];
 
@@ -27,7 +26,8 @@ export function FontSizeControl({ initial }: { initial: number }) {
     const next = STEPS[Math.min(STEPS.length - 1, Math.max(0, (i === -1 ? 1 : i) + dir))];
     setScale(next);
     apply(next);
-    supabaseBrowser().rpc("update_my_prefs", { p_font_scale: next }).then(() => {});
+    // โหลด Supabase client เมื่อใช้จริง (ลดขนาดไฟล์ที่ทุกหน้าต้องโหลด)
+    import("@/lib/supabase/client").then(({ supabaseBrowser }) => supabaseBrowser().rpc("update_my_prefs", { p_font_scale: next })).catch(() => {});
   }
 
   return (

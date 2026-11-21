@@ -14,7 +14,7 @@ import { navFor, isActive, BOTTOM_NAV, EXTERNAL_ITEMS, type NavItem } from "./na
 import { FontSizeControl } from "./font-size";
 import { SyncBar } from "./sync-bar";
 import { Tour } from "./tour";
-import { supabaseBrowser } from "@/lib/supabase/client";
+import { clearSarabanCache } from "@/lib/saraban/cache-client";
 import type { Profile } from "@/lib/supabase/server";
 import { ROLES } from "@/lib/domain";
 import { withBase } from "@/lib/base-path";
@@ -169,13 +169,15 @@ function UserMenu({ name }: { name: string }) {
   const ref = useRef<HTMLDetailsElement>(null);
 
   async function logout() {
+    // ลบ PDF สารบรรณที่เก็บไว้ก่อน (เครื่องใช้ร่วมกัน) · Supabase client โหลดเมื่อใช้จริง (ลดขนาดไฟล์ที่ทุกหน้าต้องโหลด)
+    await clearSarabanCache();
+    const { supabaseBrowser } = await import("@/lib/supabase/client");
     await supabaseBrowser().auth.signOut();
-    // ลบ PDF สารบรรณที่ service worker เก็บไว้ (เครื่องใช้ร่วมกัน: คนถัดไปต้องไม่เปิดไฟล์ของเราจากแคชได้)
-    if ("caches" in window) await caches.delete("tsr-saraban-files").catch(() => false);
     router.replace("/login");
     router.refresh();
   }
   async function replayTour() {
+    const { supabaseBrowser } = await import("@/lib/supabase/client");
     await supabaseBrowser().rpc("update_my_prefs", { p_tour_done: false });
     ref.current?.removeAttribute("open");
     router.refresh();

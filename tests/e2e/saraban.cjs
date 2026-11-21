@@ -4,7 +4,7 @@
 //   2) เพิ่ม SARABAN_DRIVE_FAKE_DIR=/tmp/saraban-fake ใน .env.local (Drive จำลอง ไม่ต่อ Google)
 //   3) npm run build && npm start
 //   4) node tests/e2e/saraban.cjs   (ต้องติดตั้ง playwright; ฐานข้อมูลปรับด้วย E2E_DB ได้เหมือน flow.cjs)
-// สิ่งที่ตรวจ: ลงรับ → เสนอ → เกษียน → มอบต่อ → อ่าน ไม่มี pageerror, เวลาโหลด /saraban บน 4G ≤ 2000ms,
+// สิ่งที่ตรวจ: ลงรับ → เสนอ → เกษียน → มอบต่อ → อ่าน ไม่มี pageerror, เวลาโหลด /saraban บน 4G ≤ 2000ms (หลังเข้าสู่ระบบ และแคชว่าง),
 // ช่วง server action ของการลงนาม ≤ 500ms, เปิด PDF รอบสองตอบจาก service worker, หนังสือลับไม่รั่ว
 const { chromium } = require("playwright");
 const { PDFDocument, StandardFonts } = require("pdf-lib");
@@ -124,7 +124,7 @@ async function register(page, file, subject, secret) {
   await d.waitForLoadState("load");
   const cdp = await dir.ctx.newCDPSession(d);
   await cdp.send("Network.enable");
-  const measure = async (label, strict) => {
+  const measure = async (label) => {
     await cdp.send("Network.emulateNetworkConditions", NET_4G);
     const t0 = Date.now();
     await d.goto(BASE + "/saraban", { waitUntil: "load" });
@@ -137,17 +137,16 @@ async function register(page, file, subject, secret) {
     });
     await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
     console.log(`   เวลา (${label}): load ${nav.load}ms (นาฬิกาสคริปต์ ${wall}ms) · TTFB ${nav.ttfb}ms · DOMContentLoaded ${nav.dcl}ms · HTML ${nav.html} B · ไฟล์ประกอบ ${nav.resources} (ดาวน์โหลดใหม่ ${nav.fetched}, ${nav.bytes} B)`);
-    if (strict) ok(nav.load <= LOAD_MAX_MS, `/saraban (${label}) โหลดบน 4G ${nav.load}ms ≤ ${LOAD_MAX_MS}ms`);
-    else console.log(`   ${nav.load <= LOAD_MAX_MS ? "✓" : "⚠"} (ข้อมูลประกอบ ไม่ใช่เกณฑ์) /saraban (${label}) ${nav.load}ms — ดาวน์โหลด ${nav.bytes} B ที่ 1.6Mbps ใช้เวลาอย่างน้อย ${Math.round((nav.bytes / NET_4G.downloadThroughput) * 1000)}ms`);
+    ok(nav.load <= LOAD_MAX_MS, `/saraban (${label}) โหลดบน 4G ${nav.load}ms ≤ ${LOAD_MAX_MS}ms (ดาวน์โหลด ${nav.bytes} B ใช้แบนด์วิดท์อย่างน้อย ${Math.round((nav.bytes / NET_4G.downloadThroughput) * 1000)}ms)`);
     return nav.load;
   };
   // 1) ใช้งานจริง: เข้าสู่ระบบแล้วแตะเมนูสารบรรณ (ไฟล์ร่วมของ Next.js อยู่ในแคชเบราว์เซอร์แล้ว)
-  timings.load4g = await measure("หลังเข้าสู่ระบบ", true);
+  timings.load4g = await measure("หลังเข้าสู่ระบบ");
   await d.screenshot({ path: SHOT + "01-director-inbox.png" });
-  // 2) ข้อมูลประกอบ: ล้างแคชเบราว์เซอร์ทั้งหมด (JS/CSS/ฟอนต์ทั้งระบบดาวน์โหลดใหม่ผ่าน 4G) — พิมพ์ผลไว้ ไม่นับเป็นเกณฑ์
-  //    ขนาดรวมถูกกำหนดโดยไฟล์ร่วมทั้งระบบ (Next.js + ฟอนต์ Sarabun) ไม่ใช่หน้าสารบรรณ
+  // 2) กรณีแย่สุด: ล้างแคชเบราว์เซอร์ทั้งหมด (JS/CSS/ฟอนต์ทั้งระบบดาวน์โหลดใหม่ผ่าน 4G) — เป็นเกณฑ์ด้วย
+  //    ขนาดถูกกำหนดโดยไฟล์ร่วมทั้งระบบ: ฟอนต์ไม่ preload (โหลดเฉพาะน้ำหนักที่ใช้) และ Supabase client โหลดเมื่อใช้จริง
   await cdp.send("Network.clearBrowserCache");
-  timings.load4gCold = await measure("แคชว่าง", false);
+  timings.load4gCold = await measure("แคชว่าง");
 
   step("ผอ. เกษียน: คำสั่ง → หัวหน้ากลุ่มงาน → ลงนาม → ยืนยัน (วัดช่วง server action)");
   await d.goto(BASE + "/saraban/book/" + bookId);

@@ -4,7 +4,6 @@
 // ทำให้ครูเห็น "บันทึกแล้ว" ทันที และใช้งานได้แม้ไม่มีสัญญาณ
 
 import { createStore, del, entries, get, set } from "idb-keyval";
-import { supabaseBrowser } from "./supabase/client";
 
 export type QueueItem = {
   key: string;
@@ -55,8 +54,17 @@ export function flushQueue(): Promise<FlushResult> {
     const result: FlushResult = { sent: 0, failed: [], offline: false };
     try {
       if (!store) return result;
-      const sb = supabaseBrowser();
-      for (const item of await pendingItems()) {
+      const items = await pendingItems();
+      if (!items.length) return result;
+      // โหลด Supabase client เมื่อมีรายการต้องส่งเท่านั้น (ไม่ให้ทุกหน้าต้องดาวน์โหลดตั้งแต่แรก)
+      let sb;
+      try {
+        sb = (await import("./supabase/client")).supabaseBrowser();
+      } catch {
+        result.offline = true; // โหลดไฟล์ไม่ได้ = ไม่มีสัญญาณ ส่งใหม่ภายหลัง
+        return result;
+      }
+      for (const item of items) {
         if (typeof navigator !== "undefined" && !navigator.onLine) {
           result.offline = true;
           break;
