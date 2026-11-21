@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_COOKIE_OPTIONS, COOKIE_MAX_AGE, MIGRATED_COOKIE, MIGRATE_NEXT_HEADER, authStorageKey, planCookieMigration } from "./cookies";
 
 // path ใน middleware ไม่มี /sis (Next ตัด basePath ออกให้แล้ว)
-const PUBLIC_PATHS = ["/login", "/auth", "/offline"];
+const PUBLIC_PATHS = ["/login", "/auth", "/offline", "/saraban/api/cron/"]; // cron ตรวจ CRON_SECRET เอง
 
 /** rewrite ภายในไปที่ route handler ใต้ /sis/auth (URL ในแถบที่อยู่ไม่เปลี่ยน) */
 function rewriteTo(request: NextRequest, pathname: string, headers?: Record<string, string>) {

@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildServiceJwt, createUploadSession, getFileMeta } from "../src/lib/saraban/drive.ts";
+import { formatLineMessage, pushLineGroup } from "../src/lib/saraban/line.ts";
 
 const b64urlJson = (s: string) => JSON.parse(Buffer.from(s, "base64url").toString("utf8"));
 
@@ -53,5 +54,47 @@ test("Drive โหมดจำลอง: เปิด session แล้วอ่
     delete process.env.SARABAN_DRIVE_FAKE_DIR;
     delete process.env.SARABAN_DRIVE_FOLDER_ID;
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- LINE ----
+const lineBase = {
+  receiveNo: 12,
+  year: 2569,
+  subject: "ขอเชิญประชุมประจำเดือน",
+  fromOrg: "สพป.กรุงเทพ",
+  urgency: 0 as const,
+  secret: false,
+  command: "ทราบ",
+  assignees: ["ครูสมชาย", "ครูสมหญิง"],
+  url: "https://example.com/sis/saraban/1",
+};
+
+test("formatLineMessage: หนังสือลับไม่เผยชื่อเรื่อง", () => {
+  const t = formatLineMessage({ ...lineBase, secret: true });
+  assert.ok(!t.includes(lineBase.subject));
+  assert.ok(t.includes("หนังสือลับ"));
+});
+
+test("formatLineMessage: ระดับความด่วน", () => {
+  assert.ok(formatLineMessage({ ...lineBase, urgency: 3 }).includes("[ด่วนที่สุด]"));
+  assert.ok(!formatLineMessage(lineBase).includes("["));
+});
+
+test("formatLineMessage: ไม่มีผู้รับผิดชอบ ตัดบรรทัด และตัดความยาว", () => {
+  assert.ok(!formatLineMessage({ ...lineBase, assignees: [] }).includes("ผู้รับผิดชอบ"));
+  assert.ok(formatLineMessage(lineBase).includes("ผู้รับผิดชอบ: ครูสมชาย, ครูสมหญิง"));
+  assert.ok(formatLineMessage({ ...lineBase, subject: "ก".repeat(9000) }).length <= 5000);
+});
+
+test("pushLineGroup: ไม่มี env คืน false", async () => {
+  const old = [process.env.LINE_CHANNEL_ACCESS_TOKEN, process.env.LINE_GROUP_ID];
+  delete process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  delete process.env.LINE_GROUP_ID;
+  try {
+    assert.equal(await pushLineGroup("x"), false);
+  } finally {
+    if (old[0] !== undefined) process.env.LINE_CHANNEL_ACCESS_TOKEN = old[0];
+    if (old[1] !== undefined) process.env.LINE_GROUP_ID = old[1];
   }
 });
