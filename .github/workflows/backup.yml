@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: repo
-      - name: สำรองรูปเยี่ยมบ้าน (ทำเมื่อตั้ง SUPABASE_URL และ SUPABASE_SERVICE_ROLE_KEY ไว้)
+      - name: สำรองรูปเยี่ยมบ้านและลายเซ็นสารบรรณ (ทำเมื่อตั้ง SUPABASE_URL และ SUPABASE_SERVICE_ROLE_KEY ไว้)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

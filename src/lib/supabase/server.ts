@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { cache } from "react";
 import { AUTH_COOKIE_OPTIONS } from "./cookies";
+import type { SarabanRole } from "@/lib/saraban/types";
 
 /** Supabase ฝั่งเซิร์ฟเวอร์ ใช้สิทธิ์ของผู้ใช้ที่ล็อกอินอยู่ (RLS ทำงานตามปกติ) */
 export async function supabaseServer() {
@@ -43,6 +44,8 @@ export type Profile = {
   tour_done: boolean;
   email: string | null;
   has_admin: boolean;
+  saraban_role: SarabanRole;
+  work_group: string | null;
   homerooms: { classroom_id: number; grade: string; room: number; year: number; kind: "homeroom" | "assistant" }[];
 };
 

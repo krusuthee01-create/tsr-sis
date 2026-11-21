@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { Button } from "@/components/ui";
+import { clearSarabanDevice } from "@/lib/saraban/cache-client";
 
 export function PendingActions({ canClaimAdmin }: { canClaimAdmin: boolean }) {
   const router = useRouter();
@@ -27,7 +28,7 @@ export function PendingActions({ canClaimAdmin }: { canClaimAdmin: boolean }) {
         </div>
       )}
       <Button variant="secondary" size="lg" onClick={() => router.refresh()}>ตรวจสอบอีกครั้ง</Button>
-      <Button variant="ghost" onClick={async () => { await supabaseBrowser().auth.signOut(); router.replace("/login"); }}>ออกจากระบบ / ใช้บัญชีอื่น</Button>
+      <Button variant="ghost" onClick={async () => { await clearSarabanDevice(); await supabaseBrowser().auth.signOut(); router.replace("/login"); }}>ออกจากระบบ / ใช้บัญชีอื่น</Button>
     </div>
   );
 }

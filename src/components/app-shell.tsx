@@ -7,14 +7,14 @@ import { useEffect, useRef, useState } from "react";
 import {
   House, CheckSquare, Chalkboard, Student, DoorOpen, IdentificationBadge, ChartBar,
   ClockCounterClockwise, GearSix, BookOpen, List, X, SignOut, SidebarSimple, Sparkle, Scales, HandHeart, GraduationCap, Medal,
-  ArrowsLeftRight, Fingerprint,
+  ArrowsLeftRight, Fingerprint, Tray,
 } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
 import { navFor, isActive, BOTTOM_NAV, EXTERNAL_ITEMS, type NavItem } from "./nav-items";
 import { FontSizeControl } from "./font-size";
 import { SyncBar } from "./sync-bar";
 import { Tour } from "./tour";
-import { supabaseBrowser } from "@/lib/supabase/client";
+import { clearSarabanDevice } from "@/lib/saraban/cache-client";
 import type { Profile } from "@/lib/supabase/server";
 import { ROLES } from "@/lib/domain";
 import { withBase } from "@/lib/base-path";
@@ -22,7 +22,7 @@ import { withBase } from "@/lib/base-path";
 const ICONS: Record<NavItem["icon"], Icon> = {
   home: House, check: CheckSquare, subject: Chalkboard, students: Student, rooms: DoorOpen,
   staff: IdentificationBadge, reports: ChartBar, audit: ClockCounterClockwise, settings: GearSix, manual: BookOpen, nutrition: Scales, care: HandHeart, grades: GraduationCap, sar: Medal,
-  switch: ArrowsLeftRight, timeclock: Fingerprint,
+  switch: ArrowsLeftRight, timeclock: Fingerprint, saraban: Tray,
 };
 
 export function AppShell({ profile, schoolName, children }: { profile: Profile; schoolName: string; children: React.ReactNode }) {
@@ -169,11 +169,15 @@ function UserMenu({ name }: { name: string }) {
   const ref = useRef<HTMLDetailsElement>(null);
 
   async function logout() {
+    // ลบแคชสารบรรณและยกเลิกการแจ้งเตือนของอุปกรณ์นี้ก่อน (เครื่องใช้ร่วมกัน) · Supabase client โหลดเมื่อใช้จริง (ลดขนาดไฟล์ที่ทุกหน้าต้องโหลด)
+    await clearSarabanDevice();
+    const { supabaseBrowser } = await import("@/lib/supabase/client");
     await supabaseBrowser().auth.signOut();
     router.replace("/login");
     router.refresh();
   }
   async function replayTour() {
+    const { supabaseBrowser } = await import("@/lib/supabase/client");
     await supabaseBrowser().rpc("update_my_prefs", { p_tour_done: false });
     ref.current?.removeAttribute("open");
     router.refresh();

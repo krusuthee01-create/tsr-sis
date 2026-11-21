@@ -112,12 +112,96 @@ pg_restore --clean --if-exists --no-owner -d "<SUPABASE_DB_URL>" backup.dump
 ```
 แนะนำให้ทดลองกู้คืนลงโปรเจกต์ Supabase ใหม่ก่อน เพื่อตรวจว่าไฟล์ใช้ได้
 
-## 6. ข้อจำกัดของแพ็กเกจฟรีที่ควรรู้
+## 6. สารบรรณอิเล็กทรอนิกส์ (e-Saraban)
+
+ลงรับหนังสือ PDF › เสนอ ผอ. › เกษียนบนมือถือ › มอบหมายต่อ › ครูอ่าน (รายละเอียดการออกแบบ: `docs/superpowers/specs/2026-11-21-esaraban-design.md`)
+ไฟล์ PDF เก็บใน **Shared Drive ของโรงเรียน** (Google Workspace for Education ฟรี) ไม่ใช้พื้นที่ Supabase
+ทุกค่าด้านล่างใส่ที่ Vercel › Settings › Environment Variables แล้ว **Redeploy** (ค่า `NEXT_PUBLIC_*` ฝังตอน build ต้อง deploy ใหม่ทุกครั้งที่แก้)
+ห้ามนำค่าลับลง git, LINE, อีเมล หรือเอกสารนี้ — เก็บในตัวจัดการรหัสผ่านของผู้ดูแลระบบ
+
+### 6.1 ฐานข้อมูล
+1. Supabase › **SQL Editor** › รัน `supabase/migrations/0012_saraban.sql` (หลังไฟล์ก่อนหน้าทั้งหมด) ได้ตาราง สิทธิ์ และ bucket `signatures` (ลายเซ็น)
+2. ตรวจ: Supabase › **Storage** ต้องมี bucket `signatures` (Private)
+
+### 6.2 Shared Drive และ service account (เก็บไฟล์ PDF)
+service account ไม่มีพื้นที่ Drive ของตัวเอง จึงต้องเก็บใน Shared Drive เท่านั้น
+1. https://console.cloud.google.com › เลือกโปรเจกต์ (ใช้โปรเจกต์เดียวกับข้อ 2.1 หรือสร้างใหม่ เช่น `tsr-sis-saraban`)
+2. **APIs & Services › Library** › ค้นหา **Google Drive API** › **Enable**
+3. **IAM & Admin › Service Accounts › Create service account** ชื่อ `saraban` (ไม่ต้องให้ role ใด ๆ) › Done
+   จดอีเมลที่ได้ เช่น `saraban@tsr-sis-saraban.iam.gserviceaccount.com` → `GOOGLE_SA_EMAIL`
+4. คลิก service account › แท็บ **Keys › Add key › Create new key › JSON** ได้ไฟล์ .json (ความลับ เก็บให้ดี ลบจากเครื่องเมื่อใส่ Vercel แล้ว)
+   เปิดไฟล์ คัดลอกค่า `private_key` ทั้งก้อน (ขึ้นต้น `-----BEGIN PRIVATE KEY-----\n...`) → `GOOGLE_SA_PRIVATE_KEY`
+   ใส่แบบบรรทัดเดียวที่มี `\n` ตามในไฟล์ได้เลย ระบบแปลง `\n` เป็นขึ้นบรรทัดใหม่ให้เอง
+5. https://drive.google.com ด้วยบัญชี Workspace ของโรงเรียน › **ไดรฟ์ที่แชร์ › ใหม่** ตั้งชื่อ `eSaraban`
+6. ในไดรฟ์ `eSaraban` › **จัดการสมาชิก** › เพิ่มอีเมล service account ในข้อ 3 สิทธิ์ **ผู้จัดการเนื้อหา (Content manager)** › ไม่ต้องส่งอีเมลแจ้ง
+   (เพิ่มผู้ดูแลระบบอีกคนเป็น "ผู้จัดการ" ไว้ด้วย กันไดรฟ์ไม่มีเจ้าของเมื่อคนใดคนหนึ่งย้ายออก)
+7. สร้างโฟลเดอร์ เช่น `หนังสือรับ` ในไดรฟ์ `eSaraban` แล้วเปิดโฟลเดอร์นั้น
+   ที่อยู่เว็บจะเป็น `https://drive.google.com/drive/folders/<รหัสโฟลเดอร์>` คัดลอกส่วน `<รหัสโฟลเดอร์>` → `SARABAN_DRIVE_FOLDER_ID`
+
+### 6.3 LINE OA (แจ้งกลุ่มครูเมื่อ ผอ. สั่งการ)
+1. https://developers.line.biz/console › สร้าง Provider (ชื่อโรงเรียน) › **Create a Messaging API channel** (หรือเปิด Messaging API ให้ LINE OA ที่มีอยู่แล้วใน LINE Official Account Manager)
+2. LINE Official Account Manager › **ตั้งค่า › บัญชี** › เปิด **"อนุญาตให้บัญชีเข้าร่วมกลุ่มแชท"**
+3. LINE Developers › channel › แท็บ **Messaging API** › **Channel access token (long-lived) › Issue** → `LINE_CHANNEL_ACCESS_TOKEN`
+4. หา group ID (ทำครั้งเดียว) — LINE ส่ง group ID มาใน webhook ตอนบอทเข้ากลุ่มเท่านั้น วิธีง่าย:
+   1. เปิด https://webhook.site จะได้ที่อยู่ชั่วคราว (เช่น `https://webhook.site/xxxx`)
+   2. LINE Developers › แท็บ **Messaging API › Webhook URL** ใส่ที่อยู่นั้น › เปิด **Use webhook**
+   3. เชิญบัญชี LINE OA เข้ากลุ่ม LINE ครูของโรงเรียน
+   4. หน้า webhook.site จะมีคำขอ `"type": "join"` ดูค่า `"source": {"type": "group", "groupId": "C..."}` คัดลอกค่าที่ขึ้นต้นด้วย `C` → `LINE_GROUP_ID`
+   5. กลับไป **ลบ Webhook URL และปิด Use webhook** (ระบบส่งข้อความอย่างเดียว ไม่ต้องรับ webhook)
+5. ข้อความที่ส่ง: 1 ข้อความต่อเล่ม เมื่อ ผอ. สั่งการเท่านั้น หนังสือลับแสดง "หนังสือลับ" แทนชื่อเรื่อง (แพ็กเกจฟรีส่งได้ 200 ข้อความ/เดือน)
+
+### 6.4 แจ้งเตือนบนมือถือ (Web Push) และงานตั้งเวลา
+1. ในเครื่องที่มี Node.js: `npx web-push generate-vapid-keys` ได้ Public Key และ Private Key
+   - Public Key → `NEXT_PUBLIC_VAPID_PUBLIC_KEY`
+   - Private Key → `VAPID_PRIVATE_KEY` (ความลับ)
+   - `VAPID_SUBJECT` = `mailto:<อีเมลผู้ดูแลระบบ>` (ไม่ตั้ง = `mailto:admin@anubantep.ac.th`)
+   - สร้างครั้งเดียว ถ้าเปลี่ยนคีย์ ทุกคนต้องกด "เปิดการแจ้งเตือน" ใหม่
+2. `CRON_SECRET` = ข้อความสุ่มยาว ๆ เช่นผลของ `openssl rand -hex 32`
+   Vercel Cron (ตั้งไว้ใน `vercel.json`: วันจันทร์–ศุกร์ 07:00 น. เวลาไทย) ส่งค่านี้ให้ `/sis/saraban/api/cron/reminders` เองอัตโนมัติเมื่อตั้งเป็น Environment Variable
+   ไม่ตั้ง = งานเตือนหนังสือใกล้ครบกำหนดตอบ 401 ไม่ทำงาน
+3. `NEXT_PUBLIC_SITE_URL` = ที่อยู่หลักที่ครูเปิด เช่น `https://gotime.anubantep.ac.th` (ไม่ต้องใส่ `/sis`) ใช้สร้างลิงก์ในข้อความ LINE
+4. iPhone: ครูต้อง "เพิ่มไปยังหน้าจอโฮม" แล้วเปิดจากไอคอนก่อน จึงจะเปิดการแจ้งเตือนได้ (ข้อจำกัดของ iOS)
+
+### 6.5 สรุปค่าที่ต้องตั้ง
+| ชื่อ | ค่า | ความลับ |
+|---|---|---|
+| `GOOGLE_SA_EMAIL` | อีเมล service account (6.2 ข้อ 3) | |
+| `GOOGLE_SA_PRIVATE_KEY` | `private_key` จากไฟล์ JSON (6.2 ข้อ 4) | ✔ |
+| `SARABAN_DRIVE_FOLDER_ID` | รหัสโฟลเดอร์ใน Shared Drive (6.2 ข้อ 7) | ✔ |
+| `LINE_CHANNEL_ACCESS_TOKEN` | channel access token (6.3 ข้อ 3) | ✔ |
+| `LINE_GROUP_ID` | group ID ขึ้นต้น `C` (6.3 ข้อ 4) | ✔ |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | VAPID Public Key | |
+| `VAPID_PRIVATE_KEY` | VAPID Private Key | ✔ |
+| `VAPID_SUBJECT` | `mailto:...` (ไม่บังคับ) | |
+| `CRON_SECRET` | ข้อความสุ่ม | ✔ |
+| `NEXT_PUBLIC_SITE_URL` | เช่น `https://gotime.anubantep.ac.th` | |
+
+ค่าลับทุกตัวอ่านเฉพาะฝั่งเซิร์ฟเวอร์ ไม่ถูกส่งไปเบราว์เซอร์ · `SARABAN_DRIVE_FAKE_DIR` ใช้เฉพาะทดสอบในเครื่อง **ห้ามตั้งบน Vercel**
+
+### 6.6 กำหนดบทบาทและเริ่มใช้งาน
+1. หน้า **ทะเบียนครู** › ชื่อครู › หัวข้อ "ระบบสารบรรณ" เลือกบทบาทแล้วกดบันทึก (ทำได้โดยผู้ดูแลระบบหรือผู้อำนวยการ):
+   - ผู้อำนวยการ 1 คน, เจ้าหน้าที่ธุรการ, หัวหน้ากลุ่มงาน (ต้องระบุกลุ่มงาน เช่น วิชาการ งบประมาณ บุคคล บริหารทั่วไป)
+   - ครูที่จะรับงานจากหัวหน้ากลุ่มงาน ให้ระบุกลุ่มงานเดียวกัน · ค่าเริ่มต้นของทุกคนคือ "ครู"
+2. ผอ. และธุรการ: สารบรรณ › ตั้งค่า › อัปโหลดลายเซ็น (PNG) และกด "เปิดการแจ้งเตือน" บนมือถือของตน
+3. ทดลองลงรับหนังสือทดสอบ 1 ฉบับ เกษียน และมอบหมาย ตรวจว่าไฟล์ขึ้นใน Shared Drive และข้อความเข้ากลุ่ม LINE
+4. **ทดลองใช้ 2 สัปดาห์** กับธุรการ + ผอ. (ลงรับ เกษียน มอบหมาย) โดย**ใช้ระบบเดิมควบคู่** เมื่อไม่พบปัญหาจึงเปิดให้ครูทุกคนเปิดการแจ้งเตือนและใช้งาน
+
+### 6.7 (ไม่บังคับ) ที่อยู่สั้น `/saraban`
+ถ้าต้องการให้ `https://gotime.anubantep.ac.th/saraban` เปิดหน้าสารบรรณ ให้เพิ่มใน Caddyfile ของระบบลงเวลา (นอก repo นี้) ภายในบล็อกของ `gotime.anubantep.ac.th`:
+```
+redir /saraban /sis/saraban 302
+redir /saraban/* /sis{uri} 302
+```
+แก้แล้ว `caddy reload` (`{uri}` มี `/saraban/...` อยู่แล้ว ปลายทางจึงเป็น `/sis/saraban/...`)
+
+## 7. ข้อจำกัดของแพ็กเกจฟรีที่ควรรู้
 
 | รายการ | แพ็กเกจฟรี | การใช้งานของโรงเรียน (ประมาณ) |
 |---|---|---|
 | ฐานข้อมูล Supabase | 500 MB | ข้อมูลเช็กชื่อ 3 อย่าง × 500 คน × 200 วัน ≈ 30–60 MB ต่อปี |
-| พื้นที่ไฟล์ Supabase | 1 GB | ใช้ในเฟส 2 (รูปเยี่ยมบ้าน) |
+| พื้นที่ไฟล์ Supabase | 1 GB | รูปเยี่ยมบ้าน + ลายเซ็นสารบรรณ (ไฟล์ละไม่เกิน 200 KB) |
+| Shared Drive (Google Workspace for Education) | ตามพื้นที่รวมของโรงเรียน | PDF สารบรรณ ประมาณ 1–3 GB ต่อปี |
+| LINE OA | 200 ข้อความ/เดือน | 1 ข้อความต่อเล่มที่ ผอ. สั่งการ |
 | Vercel | ใช้ส่วนตัว/ไม่แสวงกำไร | เว็บนี้ใช้ทรัพยากรน้อยมาก |
 
 ถ้าเกินในอนาคต อัปเกรดเป็น Supabase Pro ได้โดยไม่ต้องย้ายข้อมูล

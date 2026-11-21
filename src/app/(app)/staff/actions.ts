@@ -77,3 +77,23 @@ export async function deleteStaff(staffId: string): Promise<Result> {
   revalidatePath("/staff");
   return { ok: true };
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * กำหนดบทบาทสารบรรณและกลุ่มงานของครู — ผู้ดูแลระบบ หรือ ผอ. ในระบบสารบรรณ
+ * ตรวจสิทธิ์และเขียนผ่าน RPC saraban_set_role (security definer) เพื่อให้ประวัติการแก้ไขบันทึกผู้ทำจริง
+ */
+export async function setSarabanRole(staffId: unknown, role: unknown, workGroup: unknown): Promise<Result> {
+  if (typeof staffId !== "string" || !UUID.test(staffId)) return { ok: false, error: "ไม่พบครูท่านนี้" };
+  if (typeof role !== "string") return { ok: false, error: "บทบาทไม่ถูกต้อง" };
+  if (workGroup != null && typeof workGroup !== "string") return { ok: false, error: "กลุ่มงานไม่ถูกต้อง" };
+  const sb = await supabaseServer();
+  const { error } = await sb.rpc("saraban_set_role", { p_staff: staffId, p_role: role, p_group: workGroup ?? null });
+  if (error) {
+    console.error("saraban_set_role", error);
+    return { ok: false, error: error.code === "P0001" && error.message ? error.message : "บันทึกบทบาทสารบรรณไม่สำเร็จ" };
+  }
+  revalidatePath(`/staff/${staffId}`);
+  return { ok: true };
+}

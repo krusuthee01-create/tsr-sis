@@ -136,7 +136,7 @@ const storageKey = `sb-${new URL(env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".
       await page.goto(PROXY + "/");
       check((await page.locator("#gotime-offline").count()) > 0, "หน้าแรกระบบลงเวลา → หน้าออฟไลน์ของระบบลงเวลา (ยังทำงานตามเดิม)");
       const keys = await page.evaluate(() => caches.keys());
-      check(keys.includes("shell-v2") && keys.some((k) => k.startsWith("tsr-v2-")), `แคชสองระบบอยู่ร่วมกัน ${JSON.stringify(keys)}`);
+      check(keys.includes("shell-v2") && keys.some((k) => k.startsWith("tsr-v5-")), `แคชสองระบบอยู่ร่วมกัน ${JSON.stringify(keys)}`);
     } finally {
       execSync(PROXY_CTL.replace("%s", "start"));
       await new Promise((r) => setTimeout(r, 2500));

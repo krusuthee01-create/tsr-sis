@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckSquare, Student, Question, DeviceMobile, HandWaving } from "@phosphor-icons/react";
-import { supabaseBrowser } from "@/lib/supabase/client";
 
 const STEPS = [
   { icon: HandWaving, color: "#1E3A8A", title: "ยินดีต้อนรับสู่ TSR-SIS", text: "ระบบสารสนเทศนักเรียนของโรงเรียน ใช้ได้ทั้งมือถือ iPad และคอมพิวเตอร์ ทัวร์นี้ใช้เวลาประมาณ 1 นาที" },
@@ -25,6 +24,7 @@ export function Tour() {
 
   async function finish() {
     setHidden(true);
+    const { supabaseBrowser } = await import("@/lib/supabase/client");
     await supabaseBrowser().rpc("update_my_prefs", { p_tour_done: true });
     router.refresh();
   }

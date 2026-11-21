@@ -13,6 +13,9 @@ const TABLES: Record<string, string> = {
   attendance_subject: "เช็กชื่อประจำวิชา", staff: "ทะเบียนครู", homeroom_assignments: "ครูที่ปรึกษา", teaching_assignments: "วิชาที่สอน",
   classrooms: "ห้องเรียน", subjects: "รายวิชา", terms: "ภาคเรียน", holidays: "วันหยุด", periods: "คาบเรียน",
   academic_years: "ปีการศึกษา", school_settings: "ตั้งค่าโรงเรียน",
+  // สารบรรณ: แสดงเฉพาะผู้ที่เป็น ผอ./ธุรการในระบบสารบรรณ (RLS ของ audit_log กรองให้)
+  saraban_books: "หนังสือรับ (สารบรรณ)", saraban_files: "ไฟล์หนังสือ (สารบรรณ)", saraban_recipients: "ผู้รับหนังสือ (สารบรรณ)",
+  saraban_presets: "ข้อความสำเร็จรูป (สารบรรณ)",
 };
 const ACTIONS: Record<string, string> = { insert: "เพิ่ม", update: "แก้ไข", delete: "ลบ", save: "บันทึก", import: "นำเข้า", promote: "เลื่อนชั้น" };
 const PAGE = 50;

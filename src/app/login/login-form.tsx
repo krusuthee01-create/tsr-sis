@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Info } from "@phosphor-icons/react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { Field, btnClass } from "@/components/ui";
 import { usernameToEmail } from "@/lib/accounts";
 import { withBase } from "@/lib/base-path";
+import { clearSarabanCache } from "@/lib/saraban/cache-client";
 
 function GoogleLogo() {
   return (
@@ -28,6 +29,8 @@ export function LoginForm({ initialError }: { initialError: string | null }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(initialError);
   const [busy, setBusy] = useState(false);
+  // มาถึงหน้าเข้าสู่ระบบ = ไม่มีผู้ใช้ (ออกจากระบบหรือ session หมดอายุ) — ลบ PDF สารบรรณที่คนก่อนเปิดไว้
+  useEffect(() => { void clearSarabanCache(); }, []);
 
   async function google() {
     setBusy(true);
