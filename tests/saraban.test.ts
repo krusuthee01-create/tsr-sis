@@ -11,6 +11,7 @@ import { embedPng, endorsementLines, pngSizePt, receiveStampLines } from "../src
 import { PDFDocument } from "pdf-lib";
 import { formatLineMessage, pushLineGroup } from "../src/lib/saraban/line.ts";
 import { isIsoDate, parseRegisterInput, receiveStampBox, validateRegister } from "../src/lib/saraban/register.ts";
+import { A4, endorsementPlacement, isUuid, latestFile, parseNote, parseTargets, siteOrigin } from "../src/lib/saraban/book.ts";
 
 const b64urlJson = (s: string) => JSON.parse(Buffer.from(s, "base64url").toString("utf8"));
 
@@ -224,4 +225,92 @@ test("parseRegisterInput: ตรวจชนิดข้อมูลจริง
   }
   const n = parseRegisterInput({ ...ok, receiveNo: 7 });
   assert.ok(n.ok && n.input.receiveNo === 7);
+});
+
+// ---------- หน้าหนังสือ (Task 7) ----------
+
+test("latestFile: ฉบับประทับตรารุ่นล่าสุดก่อน ไม่มีใช้ต้นฉบับ ไม่มีไฟล์คืน null", () => {
+  const f = (kind: string, version: number) => ({ id: `${kind}${version}`, kind, version });
+  assert.equal(latestFile([]), null);
+  assert.equal(latestFile([f("attachment", 1)]), null);
+  assert.equal(latestFile([f("original", 1), f("original", 2)])?.id, "original2");
+  assert.equal(latestFile([f("original", 3), f("stamped", 1), f("stamped", 3), f("stamped", 2)])?.id, "stamped3");
+});
+
+test("endorsementPlacement: มุมล่างขวาหน้าแรก เว้นขอบ 18pt", () => {
+  const p = endorsementPlacement({ width: 595, height: 842 }, { width: 200, height: 120 }, 2);
+  assert.deepEqual(p, { appendPage: false, box: { page: 0, x: 595 - 200 - 18, y: 18, width: 200, height: 120 } });
+});
+
+test("endorsementPlacement: สูงเกิน 40% ของหน้า → เพิ่มหน้า A4 วางมุมขวาบน", () => {
+  const p = endorsementPlacement({ width: 595, height: 400 }, { width: 200, height: 170 }, 3);
+  assert.equal(p.appendPage, true);
+  assert.equal(p.box.page, 3);
+  assert.ok(Math.abs(p.box.x - (A4.width - 200 - 18)) < 1e-9);
+  assert.ok(Math.abs(p.box.y - (A4.height - 170 - 18)) < 1e-9);
+  // พอดี 40% ยังวางหน้าแรก
+  assert.equal(endorsementPlacement({ width: 595, height: 400 }, { width: 200, height: 160 }, 1).appendPage, false);
+});
+
+test("endorsementPlacement: ภาพกว้างกว่าหน้าย่อตามสัดส่วน", () => {
+  const p = endorsementPlacement({ width: 236, height: 842 }, { width: 400, height: 100 }, 1);
+  assert.equal(p.box.width, 200);
+  assert.equal(p.box.height, 50);
+  assert.equal(p.box.x, 18);
+});
+
+test("siteOrigin: Origin → X-Forwarded-Host → NEXT_PUBLIC_SITE_URL", () => {
+  assert.equal(siteOrigin({ origin: "https://gotime.example.th", forwardedHost: "x.vercel.app" }, "https://env.example"), "https://gotime.example.th");
+  assert.equal(siteOrigin({ origin: "null", forwardedHost: "sis.example.th", forwardedProto: "https" }), "https://sis.example.th");
+  assert.equal(siteOrigin({ forwardedHost: "localhost:3000", forwardedProto: "http" }), "http://localhost:3000");
+  assert.equal(siteOrigin({ forwardedHost: "evil.com/path" }, "https://sis.example.th/sis/"), "https://sis.example.th");
+  assert.equal(siteOrigin({ origin: "javascript:alert(1)" }), null);
+  assert.equal(siteOrigin({}), null);
+});
+
+test("ตรวจข้อมูลจาก client: uuid, ผู้รับ, ข้อความ", () => {
+  const id = "0b7f2c4e-1d2a-4c3b-9e8f-112233445566";
+  assert.equal(isUuid(id), true);
+  assert.equal(isUuid("x"), false);
+  assert.equal(isUuid(1), false);
+  assert.deepEqual(parseTargets([id, id]), [id]);
+  assert.deepEqual(parseTargets([]), []);
+  assert.equal(parseTargets(["x"]), null);
+  assert.equal(parseTargets("x"), null);
+  assert.equal(parseNote(undefined), "");
+  assert.equal(parseNote("  ทราบ  "), "ทราบ");
+  assert.equal(parseNote(5), null);
+  assert.equal(parseNote("ก".repeat(1500))?.length, 1000);
+});
+
+test("service worker: push แสดงแจ้งเตือน และกดแล้วเปิดเฉพาะหน้าใต้ /sis", async () => {
+  const { readFileSync } = await import("node:fs");
+  const vm = await import("node:vm");
+  const handlers: Record<string, (e: unknown) => void> = {};
+  const shown: { title: string; opts: { body: string; data: { url: string } } }[] = [];
+  const opened: string[] = [];
+  const sandbox = {
+    self: {
+      addEventListener: (t: string, fn: (e: unknown) => void) => { handlers[t] = fn; },
+      location: { origin: "https://gotime.test" },
+      registration: { showNotification: async (title: string, opts: { body: string; data: { url: string } }) => { shown.push({ title, opts }); } },
+      clients: { matchAll: async () => [], openWindow: async (u: string) => { opened.push(u); } },
+    },
+    caches: {}, URL, Promise, Response,
+  };
+  vm.runInNewContext(readFileSync(new URL("../public/sw.js", import.meta.url), "utf8"), sandbox);
+  let wait: Promise<unknown> = Promise.resolve();
+  const waitUntil = (p: Promise<unknown>) => { wait = p; };
+  handlers.push({ data: { json: () => ({ title: "มีหนังสือมอบหมายถึงคุณ", body: "รับที่ 1/2569: หนังสือลับ", url: "/sis/saraban/book/abc" }) }, waitUntil });
+  await wait;
+  assert.equal(shown[0].title, "มีหนังสือมอบหมายถึงคุณ");
+  assert.equal(shown[0].opts.body, "รับที่ 1/2569: หนังสือลับ");
+  const click = async (url: string) => {
+    handlers.notificationclick({ notification: { close: () => {}, data: { url } }, waitUntil });
+    await wait;
+    return opened.at(-1);
+  };
+  assert.equal(await click("/sis/saraban/book/abc"), "https://gotime.test/sis/saraban/book/abc");
+  assert.equal(await click("https://evil.test/sis/x"), "https://gotime.test/sis/saraban");
+  assert.equal(await click("/start"), "https://gotime.test/sis/saraban");
 });

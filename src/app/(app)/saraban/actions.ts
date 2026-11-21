@@ -1,8 +1,14 @@
 "use server";
 
+import { after } from "next/server";
+import { headers } from "next/headers";
 import { supabaseAdmin, supabaseServer } from "@/lib/supabase/server";
+import { withBase } from "@/lib/base-path";
+import { isUuid, parseNote, parseTargets, siteOrigin, PRESET_ROLES, type PresetRole } from "@/lib/saraban/book";
+import { formatLineMessage, pushLineGroup } from "@/lib/saraban/line";
+import { pushToStaff } from "@/lib/saraban/push";
 import { driveFolderId, getFileMeta } from "@/lib/saraban/drive";
-import { FILE_KINDS, MAX_UPLOAD_BYTES, type FileKind } from "@/lib/saraban/types";
+import { FILE_KINDS, MAX_UPLOAD_BYTES, type FileKind, type Urgency } from "@/lib/saraban/types";
 import { parseRegisterInput, validateRegister, type RegisterInput } from "@/lib/saraban/register";
 import type { PostgrestError } from "@supabase/supabase-js";
 
@@ -144,4 +150,220 @@ export async function loadInbox(q: string, filter: "all" | "todo" | "unread", of
   const { data, error } = await sb.rpc("saraban_inbox", { p_q: q.slice(0, 200) || null, p_filter: filter, p_offset: Math.max(0, Math.floor(offset) || 0) });
   if (error) return { ok: false, error: thaiError(error, "โหลดรายการไม่สำเร็จ") };
   return { ok: true, rows: (data ?? []) as InboxRow[] };
+}
+
+// ---------- ขั้นตอนงานในหน้าหนังสือ ----------
+
+type ActionResult = { ok: true } | { ok: false; error: string };
+const BAD_INPUT: ActionResult = { ok: false, error: "ข้อมูลไม่ถูกต้อง กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง" };
+
+/** ที่อยู่เต็มของหน้าหนังสือ (ลิงก์ในข้อความ LINE) — หา origin ไม่ได้ใช้ path */
+async function bookUrl(bookId: string): Promise<string> {
+  const h = await headers();
+  const origin = siteOrigin(
+    { origin: h.get("origin"), forwardedHost: h.get("x-forwarded-host"), forwardedProto: h.get("x-forwarded-proto") },
+    process.env.NEXT_PUBLIC_SITE_URL,
+  );
+  return (origin ?? "") + withBase(`/saraban/book/${bookId}`);
+}
+
+type NotifyBook = { receive_no: number; year: number; subject: string; from_org: string; urgency: Urgency; secret: boolean };
+
+/** ข้อมูลหนังสือและชื่อผู้รับสำหรับข้อความแจ้งเตือน (อ่านด้วย service role หลัง RPC ตรวจสิทธิ์ผ่านแล้ว) */
+async function notifyData(bookId: string, staffIds: string[]) {
+  const admin = supabaseAdmin();
+  const [{ data: book }, { data: staff }] = await Promise.all([
+    admin.from("saraban_books").select("receive_no, year, subject, from_org, urgency, secret").eq("id", bookId).maybeSingle(),
+    staffIds.length
+      ? admin.from("staff").select("id, prefix, first_name, last_name").in("id", staffIds)
+      : Promise.resolve({ data: [] as { id: string; prefix: string | null; first_name: string; last_name: string | null }[] }),
+  ]);
+  const names = new Map((staff ?? []).map((s) => [s.id, [s.prefix, s.first_name, s.last_name].filter(Boolean).join(" ")]));
+  return { book: book as NotifyBook | null, names: staffIds.map((id) => names.get(id)).filter((n): n is string => !!n) };
+}
+
+/** ข้อความแจ้งเตือนบนหน้าจอล็อก: หนังสือลับไม่เผยชื่อเรื่อง */
+function pushBody(b: NotifyBook) {
+  return `รับที่ ${b.receive_no}/${b.year}: ${b.secret ? "หนังสือลับ" : b.subject}`.slice(0, 200);
+}
+
+/** ส่งแจ้งเตือนหลังตอบผู้ใช้แล้ว — แจ้งเตือนล้มเหลวต้องไม่ทำให้การทำงานล้มเหลว */
+function notifyLater(label: string, fn: () => Promise<void>) {
+  after(async () => {
+    try {
+      await fn();
+    } catch (e) {
+      console.error("saraban notify", label, e);
+    }
+  });
+}
+
+/** ธุรการเสนอ ผอ. */
+export async function proposeBook(bookId: string, note: string, fileId: string | null): Promise<ActionResult> {
+  const n = parseNote(note);
+  if (!isUuid(bookId) || n === null || (fileId != null && !isUuid(fileId))) return BAD_INPUT;
+  const sb = await supabaseServer();
+  const { error } = await sb.rpc("saraban_propose", { p_book: bookId, p_note: n || null, p_file: fileId ?? null });
+  if (error) return { ok: false, error: thaiError(error, "เสนอหนังสือไม่สำเร็จ กรุณาลองใหม่") };
+
+  const url = withBase(`/saraban/book/${bookId}`);
+  notifyLater("propose", async () => {
+    const { data: holder } = await supabaseAdmin().from("saraban_books").select("current_holder").eq("id", bookId).maybeSingle();
+    if (!holder?.current_holder) return;
+    const { book } = await notifyData(bookId, []);
+    if (!book) return;
+    await pushToStaff([holder.current_holder], { title: "มีหนังสือเสนอเพื่อเกษียน", body: pushBody(book), url });
+  });
+  return { ok: true };
+}
+
+/** ผอ. เกษียน: มอบหัวหน้ากลุ่มงาน / มอบครูโดยตรง / ทราบ-จัดเก็บ */
+export async function endorseBook(
+  bookId: string,
+  route: "head" | "teachers" | "close",
+  note: string,
+  targets: string[],
+  fileId: string | null,
+): Promise<ActionResult> {
+  const n = parseNote(note);
+  const t = parseTargets(targets ?? []);
+  if (!isUuid(bookId) || n === null || t === null || !["head", "teachers", "close"].includes(route)) return BAD_INPUT;
+  if (fileId != null && !isUuid(fileId)) return BAD_INPUT;
+  const sb = await supabaseServer();
+  const { data, error } = await sb.rpc("saraban_endorse", {
+    p_book: bookId, p_route: route, p_note: n || null, p_targets: route === "close" ? [] : t, p_file: fileId ?? null,
+  });
+  if (error) return { ok: false, error: thaiError(error, "เกษียนหนังสือไม่สำเร็จ กรุณาลองใหม่") };
+
+  const line = (data as { line?: boolean } | null)?.line === true;
+  if (route !== "close") {
+    const url = await bookUrl(bookId);
+    notifyLater("endorse", async () => {
+      const { book, names } = await notifyData(bookId, t);
+      if (!book) return;
+      if (line) {
+        try {
+          await pushLineGroup(formatLineMessage({
+            receiveNo: book.receive_no, year: book.year, subject: book.subject, fromOrg: book.from_org,
+            urgency: book.urgency, secret: book.secret, command: n, assignees: names, url,
+          }));
+        } catch (e) {
+          console.error("saraban line", e);
+        }
+      }
+      await pushToStaff(t, {
+        title: route === "head" ? "มีหนังสือรอมอบหมาย" : "มีหนังสือมอบหมายถึงคุณ",
+        body: pushBody(book),
+        url: withBase(`/saraban/book/${bookId}`),
+      });
+    });
+  }
+  return { ok: true };
+}
+
+/** หัวหน้ากลุ่มงานมอบหมายครูในกลุ่ม */
+export async function forwardBook(bookId: string, note: string, targets: string[], fileId: string | null): Promise<ActionResult> {
+  const n = parseNote(note);
+  const t = parseTargets(targets ?? []);
+  if (!isUuid(bookId) || n === null || t === null || (fileId != null && !isUuid(fileId))) return BAD_INPUT;
+  const sb = await supabaseServer();
+  const { error } = await sb.rpc("saraban_forward", { p_book: bookId, p_note: n || null, p_targets: t, p_file: fileId ?? null });
+  if (error) return { ok: false, error: thaiError(error, "มอบหมายไม่สำเร็จ กรุณาลองใหม่") };
+
+  const url = withBase(`/saraban/book/${bookId}`);
+  notifyLater("forward", async () => {
+    const { book } = await notifyData(bookId, []);
+    if (!book) return;
+    await pushToStaff(t, { title: "มีหนังสือมอบหมายถึงคุณ", body: pushBody(book), url });
+  });
+  return { ok: true };
+}
+
+/** ผู้รับเปิดอ่าน (บันทึกครั้งแรกเท่านั้น) */
+export async function markRead(bookId: string): Promise<ActionResult> {
+  if (!isUuid(bookId)) return BAD_INPUT;
+  const sb = await supabaseServer();
+  const { error } = await sb.rpc("saraban_mark_read", { p_book: bookId });
+  if (error) return { ok: false, error: thaiError(error, "บันทึกการอ่านไม่สำเร็จ") };
+  return { ok: true };
+}
+
+/** ลบหนังสือ (soft delete) ต้องระบุเหตุผล */
+export async function deleteBook(bookId: string, reason: string): Promise<ActionResult> {
+  if (!isUuid(bookId) || typeof reason !== "string") return BAD_INPUT;
+  const r = reason.trim().slice(0, 500);
+  if (!r) return { ok: false, error: "กรุณาระบุเหตุผลที่ลบ" };
+  const sb = await supabaseServer();
+  const { error } = await sb.rpc("saraban_delete", { p_book: bookId, p_reason: r });
+  if (error) return { ok: false, error: thaiError(error, "ลบหนังสือไม่สำเร็จ กรุณาลองใหม่") };
+  return { ok: true };
+}
+
+/** แก้เลขทะเบียนรับ */
+export async function renumberBook(bookId: string, no: number): Promise<ActionResult> {
+  if (!isUuid(bookId)) return BAD_INPUT;
+  if (typeof no !== "number" || !Number.isInteger(no) || no < 1 || no > 999_999_999) {
+    return { ok: false, error: "เลขรับต้องเป็นจำนวนเต็มมากกว่า 0" };
+  }
+  const sb = await supabaseServer();
+  const { error } = await sb.rpc("saraban_renumber", { p_book: bookId, p_no: no });
+  if (error) return { ok: false, error: thaiError(error, "แก้เลขรับไม่สำเร็จ กรุณาลองใหม่") };
+  return { ok: true };
+}
+
+// ---------- ตั้งค่า ----------
+
+/** เพิ่มคำสั่งสำเร็จรูป (ผอ./ธุรการ — RLS ตรวจซ้ำ) */
+export async function savePreset(role: PresetRole, text: string): Promise<{ ok: true; id: number } | { ok: false; error: string }> {
+  if (!PRESET_ROLES.includes(role) || typeof text !== "string") return { ok: false, error: "ข้อมูลไม่ถูกต้อง" };
+  const t = text.trim();
+  if (!t) return { ok: false, error: "กรุณาพิมพ์ข้อความ" };
+  if (t.length > 300) return { ok: false, error: "ข้อความยาวเกิน 300 ตัวอักษร" };
+  const sb = await supabaseServer();
+  const { data: last } = await sb.from("saraban_presets").select("sort").eq("role", role).order("sort", { ascending: false }).limit(1);
+  const { data, error } = await sb.from("saraban_presets")
+    .insert({ role, text: t, sort: (last?.[0]?.sort ?? 0) + 1 }).select("id").maybeSingle();
+  if (error) {
+    console.error("saraban_presets insert", error);
+    return { ok: false, error: error.code === "42501" ? "เฉพาะผู้อำนวยการและธุรการแก้คำสั่งสำเร็จรูปได้" : "บันทึกไม่สำเร็จ กรุณาลองใหม่" };
+  }
+  if (!data) return { ok: false, error: "บันทึกไม่สำเร็จ กรุณาลองใหม่" };
+  return { ok: true, id: data.id as number };
+}
+
+/** ลบคำสั่งสำเร็จรูป */
+export async function deletePreset(id: number): Promise<ActionResult> {
+  if (typeof id !== "number" || !Number.isInteger(id) || id < 1) return BAD_INPUT;
+  const sb = await supabaseServer();
+  const { data, error } = await sb.from("saraban_presets").delete().eq("id", id).select("id");
+  if (error) {
+    console.error("saraban_presets delete", error);
+    return { ok: false, error: "ลบไม่สำเร็จ กรุณาลองใหม่" };
+  }
+  if (!data?.length) return { ok: false, error: "เฉพาะผู้อำนวยการและธุรการแก้คำสั่งสำเร็จรูปได้" };
+  return { ok: true };
+}
+
+/** บันทึก Web Push subscription ของอุปกรณ์นี้ให้ผู้ใช้ปัจจุบัน */
+export async function savePushSubscription(sub: PushSubscriptionJSON): Promise<ActionResult> {
+  const endpoint = sub?.endpoint;
+  const p256dh = sub?.keys?.p256dh;
+  const auth = sub?.keys?.auth;
+  if (typeof endpoint !== "string" || !/^https:\/\/\S{10,2000}$/.test(endpoint)) return BAD_INPUT;
+  if (typeof p256dh !== "string" || typeof auth !== "string" || !p256dh || !auth || p256dh.length > 200 || auth.length > 100) return BAD_INPUT;
+  const sb = await supabaseServer();
+  const { data: staffId } = await sb.rpc("my_staff_id");
+  if (typeof staffId !== "string") return { ok: false, error: "กรุณาเข้าสู่ระบบ" };
+  const row = { endpoint, staff_id: staffId, p256dh, auth };
+  let { error } = await sb.from("push_subscriptions").upsert(row, { onConflict: "endpoint" });
+  if (error?.code === "42501") {
+    // เครื่องเดียวกันเคยสมัครไว้ให้บัญชีอื่น (ใช้เครื่องร่วมกัน): ผู้ถือ endpoint คืออุปกรณ์นี้ จึงย้ายมาเป็นของผู้ใช้ปัจจุบัน
+    await supabaseAdmin().from("push_subscriptions").delete().eq("endpoint", endpoint);
+    ({ error } = await sb.from("push_subscriptions").insert(row));
+  }
+  if (error) {
+    console.error("push_subscriptions upsert", error);
+    return { ok: false, error: "เปิดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่" };
+  }
+  return { ok: true };
 }

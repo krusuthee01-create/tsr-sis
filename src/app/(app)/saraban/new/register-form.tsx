@@ -6,14 +6,12 @@ import { useRouter } from "next/navigation";
 import { FilePdf, LockSimple, UploadSimple, WarningCircle, X } from "@phosphor-icons/react";
 import { Button, Card, Field, SectionTitle } from "@/components/ui";
 import { useToast } from "@/components/toast";
-import { withBase } from "@/lib/base-path";
 import { formatThaiDate, todayISO } from "@/lib/thai-date";
-import { MAX_UPLOAD_BYTES, URGENCY_LABEL, type Urgency } from "@/lib/saraban/types";
-import { receiveStampBox, validateRegister, type RegisterInput } from "@/lib/saraban/register";
+import { URGENCY_LABEL, type Urgency } from "@/lib/saraban/types";
+import { validateRegister, type RegisterInput } from "@/lib/saraban/register";
 import { findDuplicates, orgSuggestions, registerBook, type DuplicateBook } from "../actions";
-import { uploadPdf } from "../upload";
+import { attachPdf, readPdf, type Picked } from "../pdf-client";
 
-type Picked = { file: File; bytes: Uint8Array; pages: number; encrypted: boolean };
 type Errors = Partial<Record<keyof RegisterInput | "file", string>>;
 
 const URGENCY_ACTIVE: Record<Urgency, string> = {
@@ -25,39 +23,6 @@ const URGENCY_ACTIVE: Record<Urgency, string> = {
 
 function fmtSize(n: number) {
   return n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
-}
-
-/** ตรวจไฟล์ที่เลือก: เป็น PDF ไม่เกิน 30 MB และ pdf-lib เปิดได้ */
-async function readPdf(file: File): Promise<Picked> {
-  if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) throw new Error("รองรับเฉพาะไฟล์ PDF");
-  if (file.size > MAX_UPLOAD_BYTES) throw new Error("ไฟล์ใหญ่เกิน 30 MB");
-  if (file.size === 0) throw new Error("ไฟล์ว่างเปล่า");
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const head = new TextDecoder("latin1").decode(bytes.subarray(0, 1024));
-  if (!head.includes("%PDF-")) throw new Error("ไฟล์นี้ไม่ใช่ PDF");
-  const { PDFDocument } = await import("pdf-lib");
-  try {
-    const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-    if (doc.getPageCount() < 1) throw new Error();
-    return { file, bytes, pages: doc.getPageCount(), encrypted: doc.isEncrypted };
-  } catch {
-    throw new Error("เปิดไฟล์ PDF นี้ไม่ได้ (ไฟล์อาจเสีย)");
-  }
-}
-
-/** วาดตรารับ + QR แล้วฝังที่มุมขวาบนของหน้าแรก */
-async function stampPdf(bytes: Uint8Array, s: { schoolName: string; receiveNo: number; year: number; receivedAt: string; bookId: string }) {
-  // โหลดเฉพาะตอนใช้ (canvas/pdf-lib ไม่ต้องอยู่ในหน้าแรกของ bundle)
-  const [{ drawReceiveStamp }, { receiveStampLines, pngSizePt, embedPng }, { PDFDocument }] = await Promise.all([
-    import("@/lib/saraban/stamp-canvas"),
-    import("@/lib/saraban/stamp"),
-    import("pdf-lib"),
-  ]);
-  const lines = receiveStampLines({ schoolName: s.schoolName, receiveNo: s.receiveNo, year: s.year, receivedAt: s.receivedAt });
-  const png = await drawReceiveStamp(lines, location.origin + withBase("/saraban/book/" + s.bookId));
-  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-  const box = receiveStampBox(doc.getPage(0).getSize(), pngSizePt(png));
-  return embedPng(bytes, png, box);
 }
 
 export function RegisterForm({ schoolName }: { schoolName: string }) {
@@ -163,26 +128,15 @@ export function RegisterForm({ schoolName }: { schoolName: string }) {
     const go = () => router.push(`/saraban/book/${res.id}`);
 
     // ได้เลขรับแล้ว: อัปโหลดล้มเหลวก็ยังไปหน้าหนังสือ (มีปุ่ม "แนบไฟล์อีกครั้ง")
-    try {
-      setStep(`ได้เลขรับ ${no} · กำลังอัปโหลดต้นฉบับ…`);
-      await uploadPdf(res.id, "original", pdf.file.name, pdf.file);
-    } catch (err) {
-      toast(`ลงรับแล้ว เลขรับ ${no} แต่อัปโหลดไฟล์ไม่สำเร็จ (${err instanceof Error ? err.message : "ไม่ทราบสาเหตุ"}) กรุณากด "แนบไฟล์อีกครั้ง" ในหน้าหนังสือ`, "error");
+    const r = await attachPdf(pdf, { schoolName, receiveNo: res.receiveNo, year: res.year, receivedAt: res.receivedAt, bookId: res.id },
+      (t) => setStep(`ได้เลขรับ ${no} · ${t}`));
+    if (!r.ok) {
+      const what = r.stage === "upload" ? "อัปโหลดไฟล์ไม่สำเร็จ" : "ประทับตรารับไม่สำเร็จ";
+      toast(`ลงรับแล้ว เลขรับ ${no} แต่${what} (${r.error}) กรุณากด "แนบไฟล์อีกครั้ง" ในหน้าหนังสือ`, "error");
       return go();
     }
-
-    if (pdf.encrypted) {
+    if (!r.stamped) {
       toast(`ลงรับแล้ว เลขรับ ${no} — ไฟล์ PDF ถูกล็อกไว้ จึงประทับตรารับลงไฟล์ไม่ได้ (เก็บต้นฉบับไว้แล้ว)`, "info");
-      return go();
-    }
-    try {
-      setStep(`ได้เลขรับ ${no} · กำลังประทับตรารับ…`);
-      const stamped = await stampPdf(pdf.bytes, { schoolName, receiveNo: res.receiveNo, year: res.year, receivedAt: res.receivedAt, bookId: res.id });
-      setStep(`ได้เลขรับ ${no} · กำลังอัปโหลดฉบับประทับตรา…`);
-      const name = `รับที่ ${res.receiveNo}-${res.year} ${pdf.file.name}`.slice(0, 200);
-      await uploadPdf(res.id, "stamped", name, new Blob([stamped as BlobPart], { type: "application/pdf" }));
-    } catch (err) {
-      toast(`ลงรับแล้ว เลขรับ ${no} แต่ประทับตรารับไม่สำเร็จ (${err instanceof Error ? err.message : "ไม่ทราบสาเหตุ"}) กรุณากด "แนบไฟล์อีกครั้ง" ในหน้าหนังสือ`, "error");
       return go();
     }
     toast(`ลงรับแล้ว เลขรับ ${no}`);

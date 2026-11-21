@@ -4,7 +4,7 @@
 // - หน้าเว็บ: ดึงจากเครือข่ายก่อน ถ้าไม่มีสัญญาณใช้ฉบับที่เคยเปิดไว้
 // - ข้อมูลจาก Supabase ไม่ผ่านแคชนี้ (หน้าเช็กชื่อจัดการเองด้วย IndexedDB)
 const BASE = "/sis";
-const VERSION = "tsr-v2";
+const VERSION = "tsr-v3";
 const STATIC = `${VERSION}-static`;
 const PAGES = `${VERSION}-pages`;
 const OFFLINE = `${BASE}/offline`;
@@ -65,5 +65,46 @@ self.addEventListener("fetch", (event) => {
         if (loose) return loose;
         return req.mode === "navigate" ? caches.match(OFFLINE) : Response.error();
       }),
+  );
+});
+
+// ---------- Web Push (แจ้งเตือนสารบรรณ) ----------
+// payload: {"title": "...", "body": "...", "url": "/sis/saraban/book/<id>"}
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+  const title = typeof data.title === "string" && data.title ? data.title : "TSR-SIS";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: typeof data.body === "string" ? data.body : "",
+      icon: `${BASE}/icons/icon-192.png`,
+      badge: `${BASE}/icons/icon-192.png`,
+      data: { url: typeof data.url === "string" ? data.url : `${BASE}/saraban` },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  // เปิดได้เฉพาะหน้าใต้ /sis ของ origin นี้
+  let target = new URL(`${BASE}/saraban`, self.location.origin);
+  try {
+    const u = new URL(event.notification.data && event.notification.data.url, self.location.origin);
+    if (u.origin === self.location.origin && inBase(u.pathname)) target = u;
+  } catch {
+    // ใช้หน้าสารบรรณ
+  }
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      const same = list.find((c) => c.url === target.href);
+      if (same) return same.focus();
+      const mine = list.find((c) => inBase(new URL(c.url).pathname) && "navigate" in c);
+      if (mine) return mine.navigate(target.href).then((c) => (c || mine).focus());
+      return self.clients.openWindow(target.href);
+    }),
   );
 });
