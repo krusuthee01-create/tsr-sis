@@ -15,16 +15,16 @@ export type LineBook = {
   url: string;
 };
 
-/** สร้างข้อความแจ้งกลุ่ม LINE (หนังสือลับไม่เผยชื่อเรื่อง) */
+/**
+ * สร้างข้อความแจ้งกลุ่ม LINE
+ * หนังสือลับ: กลุ่ม LINE มีครูทั้งโรงเรียน — ไม่เผยเรื่อง หน่วยงาน ข้อสั่งการ หรือชื่อผู้รับผิดชอบ (เหลือเลขรับ ความเร่งด่วน ลิงก์)
+ */
 export function formatLineMessage(b: LineBook): string {
   const head = `📥 หนังสือรับที่ ${b.receiveNo}/${b.year}` + (b.urgency > 0 ? ` [${URGENCY_LABEL[b.urgency]}]` : "");
-  const lines = [
-    head,
-    `เรื่อง: ${b.secret ? "หนังสือลับ" : b.subject}`,
-    `จาก: ${b.fromOrg}`,
-    `ผอ. สั่งการ: ${b.command}`,
-  ];
-  if (b.assignees.length > 0) lines.push(`ผู้รับผิดชอบ: ${b.assignees.join(", ")}`);
+  const lines = b.secret
+    ? [head, "หนังสือลับ — โปรดดูในระบบ"]
+    : [head, `เรื่อง: ${b.subject}`, `จาก: ${b.fromOrg}`, `ผอ. สั่งการ: ${b.command}`];
+  if (!b.secret && b.assignees.length > 0) lines.push(`ผู้รับผิดชอบ: ${b.assignees.join(", ")}`);
   const tail = b.url;
   // ตัดส่วนเนื้อหาให้เหลือที่สำหรับลิงก์ท้ายข้อความเสมอ
   let body = lines.join("\n");

@@ -313,6 +313,25 @@ select set_config('role', 'service_role', false);
 do $$ begin
   assert (select count(*) from public.saraban_due_reminders() where book_id = pg_temp.get('tch') and staff_id = pg_temp.sid(6)) = 1, 'เตือนครูที่ยังไม่อ่าน';
 end $$;
+-- ผู้ถือหนังสือขั้นถัดไป (b1 เสนอ ผอ. แล้ว) ได้รับการเตือนด้วย ไม่ซ้ำแม้เป็นผู้รับที่ยังไม่อ่าน
+select pg_temp.as_super();
+update public.saraban_books set due_date = public.today_th() + 1 where id = pg_temp.get('b1');
+do $$ begin assert not exists (select 1 from public.saraban_recipients where book_id = pg_temp.get('b1') and staff_id = pg_temp.sid(1)); end $$;
+insert into public.saraban_recipients (book_id, staff_id) values (pg_temp.get('b1'), pg_temp.sid(1));
+select set_config('role', 'service_role', false);
+do $$ begin
+  assert (select count(*) from public.saraban_due_reminders() where book_id = pg_temp.get('b1') and staff_id = pg_temp.sid(1)) = 1, 'เตือน ผอ. ที่ถือหนังสือ (แถวเดียว)';
+  assert (select bool_and(secret is not null) from public.saraban_due_reminders()), 'มีคอลัมน์ secret';
+end $$;
+select pg_temp.as_super();
+delete from public.saraban_recipients where book_id = pg_temp.get('b1') and staff_id = pg_temp.sid(1);
+update public.saraban_books set due_date = public.today_th() + 2 where id = pg_temp.get('b1');
+select set_config('role', 'service_role', false);
+do $$ begin
+  assert (select count(*) from public.saraban_due_reminders() where book_id = pg_temp.get('b1')) = 0, 'ยังไม่ใกล้กำหนดไม่เตือน';
+end $$;
+select pg_temp.as_super();
+update public.saraban_books set due_date = null where id = pg_temp.get('b1');
 
 -- ค้นหาและเรียงลำดับ
 select pg_temp.as_user(pg_temp.uid(2));
@@ -400,4 +419,26 @@ do $$ begin
 end $$;
 select pg_temp.as_user(pg_temp.uid(6));
 select pg_temp.expect_error($q$select public.saraban_set_role(pg_temp.uid(5)::text::uuid, 'clerk', null)$q$, 'เฉพาะผู้ดูแลระบบ%');
+select pg_temp.as_super();
+
+-- ประวัติการแก้ไขของตาราง saraban_*: ผู้บริหาร SIS ที่ไม่ใช่ ผอ./ธุรการสารบรรณ ต้องไม่เห็น (กันเรื่องหนังสือลับรั่ว)
+select pg_temp.as_super();
+update public.staff set roles = array['executive'] where email = 'teacher2@example.com';
+update public.staff set saraban_role = 'teacher' where email = 'teacher2@example.com';
+update public.staff set roles = array['admin'] where email in ('director@example.com', 'clerk@example.com');
+do $$ begin
+  assert (select count(*) from public.audit_log where table_name like 'saraban\_%') > 0, 'มีประวัติของตารางสารบรรณ';
+  assert (select count(*) from public.audit_log where table_name not like 'saraban\_%') > 0, 'มีประวัติของตารางอื่น';
+end $$;
+select pg_temp.as_user(pg_temp.uid(6));
+do $$ begin
+  assert (select count(*) from public.audit_log where table_name like 'saraban\_%') = 0, 'ผู้บริหาร SIS (ครูในสารบรรณ) ไม่เห็นประวัติสารบรรณ';
+  assert (select count(*) from public.audit_log where table_name not like 'saraban\_%') > 0, 'แต่ยังเห็นประวัติตารางอื่นตามเดิม';
+end $$;
+select pg_temp.as_user(pg_temp.uid(1));
+do $$ begin assert (select count(*) from public.audit_log where table_name like 'saraban\_%') > 0, 'ผอ. สารบรรณ + admin เห็น'; end $$;
+select pg_temp.as_user(pg_temp.uid(2));
+do $$ begin assert (select count(*) from public.audit_log where table_name like 'saraban\_%') > 0, 'ธุรการ + admin เห็น'; end $$;
+select pg_temp.as_user(pg_temp.uid(3));
+do $$ begin assert (select count(*) from public.audit_log) = 0, 'ไม่มีบทบาท admin/executive ไม่เห็นเลย'; end $$;
 select pg_temp.as_super();

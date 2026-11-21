@@ -20,7 +20,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     console.error("saraban file", e);
     return null;
   });
-  if (!upstream?.ok || !upstream.body) return NextResponse.json({ error: "เปิดไฟล์จาก Google Drive ไม่สำเร็จ" }, { status: 502 });
+  if (!upstream?.ok || !upstream.body) {
+    // ปล่อย connection ไปยัง Drive (ไม่อ่าน body ที่ไม่ใช้)
+    await upstream?.body?.cancel().catch(() => {});
+    return NextResponse.json({ error: "เปิดไฟล์จาก Google Drive ไม่สำเร็จ" }, { status: 502 });
+  }
 
   const headers = new Headers({
     "Content-Type": "application/pdf",
@@ -28,7 +32,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`,
     "X-Content-Type-Options": "nosniff",
   });
+  // fetch คลายการบีบอัดให้แล้ว: content-length ของต้นทางเป็นขนาดก่อนคลาย จึงคัดลอกเฉพาะเมื่อไม่ได้บีบอัด
   const len = upstream.headers.get("content-length");
-  if (len) headers.set("Content-Length", len);
+  if (len && !upstream.headers.get("content-encoding")) headers.set("Content-Length", len);
   return new Response(upstream.body, { status: 200, headers });
 }

@@ -73,8 +73,9 @@ export function BookView({ detail, me, staff, presets, schoolName }: {
           ) : (
             <p className="rounded-xl bg-slate-50 px-3 py-6 text-center text-muted">ยังไม่มีไฟล์หนังสือ</p>
           )}
-          {/* แนบไฟล์อีกครั้งได้เฉพาะก่อนเกษียน (ระบบอนุญาตอัปโหลดฉบับประทับตราเฉพาะขั้นนี้) */}
-          {isOffice && latest?.kind !== "stamped" && (book.status === "registered" || book.status === "proposed") && (
+          {/* แนบไฟล์อีกครั้งได้เฉพาะก่อนเกษียน ตามสิทธิ์อัปโหลดฉบับประทับตรา (saraban_can_upload):
+              ลงรับแล้ว = ธุรการ/ผอ. · เสนอแล้ว = ผอ. เท่านั้น */}
+          {isOffice && latest?.kind !== "stamped" && (book.status === "registered" || (book.status === "proposed" && me.role === "director")) && (
             <Reattach stamp={{ schoolName, receiveNo: book.receive_no, year: book.year, receivedAt: book.received_at, bookId: book.id }} />
           )}
           {files.length > 1 && (
@@ -224,6 +225,7 @@ function OfficeMenu({ bookId, receiveNo }: { bookId: string; receiveNo: number }
       <Sheet open={sheet === "renumber"} onClose={() => setSheet(null)} title="แก้เลขรับ">
         <label htmlFor="renumber" className="text-sm font-semibold">เลขรับใหม่</label>
         <input id="renumber" type="number" inputMode="numeric" min={1} className="field-input mt-1.5 w-full" value={no} onChange={(e) => setNo(e.target.value)} />
+        <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">ตรารับที่ประทับลงไฟล์ PDF แล้วยังแสดงเลขรับเดิม — เลขใหม่เปลี่ยนเฉพาะในทะเบียน</p>
         <Button size="lg" className="mt-4 w-full" disabled={busy || !/^\d+$/.test(no.trim())}
           onClick={() => run(() => renumberBook(bookId, Number(no)), "แก้เลขรับแล้ว", () => router.refresh())}>บันทึก</Button>
       </Sheet>

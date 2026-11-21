@@ -233,6 +233,15 @@ async function register(page, file, subject, secret) {
   ok(swFetches.length === 1, "รอบสองตอบจากแคช ไม่ดึงจากเครือข่ายซ้ำ");
   await t.reload();
   ok(await t.locator("li", { hasText: "ครูดี" }).getByText("อ่านแล้ว").first().isVisible(), "หน้าแสดงว่าครูดีอ่านแล้ว");
+  // หน้าเว็บสารบรรณ (HTML/RSC) ต้องไม่ถูกเก็บในแคชหน้าเว็บของ service worker
+  const pageKeys = await t.evaluate(async () => {
+    const out = [];
+    for (const k of (await caches.keys()).filter((n) => /^tsr-.+-pages$/.test(n))) {
+      for (const r of await (await caches.open(k)).keys()) out.push(new URL(r.url).pathname);
+    }
+    return out;
+  });
+  ok(!pageKeys.some((p) => p === "/sis/saraban" || p.startsWith("/sis/saraban/")), `ไม่เก็บหน้าสารบรรณในแคชหน้าเว็บ (${pageKeys.length} รายการ)`);
   // เครื่องใช้ร่วมกัน: ออกจากระบบแล้ว PDF ที่เก็บไว้ต้องหายไป
   await t.locator("summary[aria-label='เมนูของฉัน']").click();
   await t.getByRole("button", { name: "ออกจากระบบ" }).click();

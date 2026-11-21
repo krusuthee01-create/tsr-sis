@@ -438,7 +438,7 @@ test("manifest และ service worker อยู่ใต้ /sis และไ�
     const sandbox = {
       self: { addEventListener: (t: string, fn: (e: unknown) => void) => { handlers[t] = fn; }, location: { origin: "https://gotime.test" },
         skipWaiting: () => Promise.resolve(), clients: { claim: () => Promise.resolve() }, registration: { unregister: () => Promise.resolve(true) } },
-      caches: { keys: async () => ["shell-v2", "tsr-v1-pages", "tsr-v1-static", "tsr-v4-pages", "tsr-saraban-files", "other", ...extraKeys], delete: async (k: string) => { deleted.push(k); return true; },
+      caches: { keys: async () => ["shell-v2", "tsr-v1-pages", "tsr-v1-static", "tsr-v5-pages", "tsr-saraban-files", "other", ...extraKeys], delete: async (k: string) => { deleted.push(k); return true; },
         open: async () => ({ addAll: async () => {}, put: async () => {} }), match: async () => undefined },
       fetch: async () => new Response("ok"), Response, URL, Promise,
     };
@@ -462,7 +462,7 @@ test("manifest และ service worker อยู่ใต้ /sis และไ�
   let wait: Promise<unknown> = Promise.resolve();
   sw.handlers.activate({ waitUntil: (p: Promise<unknown>) => { wait = p; } });
   await wait;
-  // ไม่ลบ shell-v2 ของระบบลงเวลา · tsr-v1 หน้าเว็บลบพร้อมถอนตัวเก่า · tsr-v4 คือรุ่นปัจจุบัน · tsr-saraban-files อยู่ข้ามรุ่น
+  // ไม่ลบ shell-v2 ของระบบลงเวลา · tsr-v1 หน้าเว็บลบพร้อมถอนตัวเก่า · tsr-v5 คือรุ่นปัจจุบัน · tsr-saraban-files อยู่ข้ามรุ่น
   assert.deepEqual(sw.deleted, []);
   const later = load("sw.js", ["tsr-v2-pages", "tsr-v3-static"]);
   later.handlers.activate({ waitUntil: (p: Promise<unknown>) => { wait = p; } });

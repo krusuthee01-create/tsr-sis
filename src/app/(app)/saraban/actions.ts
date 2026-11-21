@@ -243,9 +243,11 @@ export async function endorseBook(
       if (!book) return;
       if (line) {
         try {
+          // หนังสือลับ: ไม่ส่งเนื้อหาเข้าตัวจัดรูปแบบเลย (กันพลาดซ้ำสองชั้น)
+          const s = book.secret;
           await pushLineGroup(formatLineMessage({
-            receiveNo: book.receive_no, year: book.year, subject: book.subject, fromOrg: book.from_org,
-            urgency: book.urgency, secret: book.secret, command: n, assignees: names, url,
+            receiveNo: book.receive_no, year: book.year, subject: s ? "" : book.subject, fromOrg: s ? "" : book.from_org,
+            urgency: book.urgency, secret: s, command: s ? "" : n, assignees: s ? [] : names, url,
           }));
         } catch (e) {
           console.error("saraban line", e);

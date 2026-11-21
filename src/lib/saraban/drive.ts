@@ -21,13 +21,26 @@ export function buildServiceJwt(email: string, privateKeyPem: string, nowSec: nu
   const payload = b64url(JSON.stringify({ iss: email, scope: SCOPE, aud: TOKEN_URL, iat: nowSec, exp: nowSec + 3600 }));
   const signer = createSign("RSA-SHA256");
   signer.update(`${header}.${payload}`);
-  // env บน Vercel มักเก็บ private key เป็น \n แบบตัวอักษร
-  const key = privateKeyPem.includes("\\n") ? privateKeyPem.replace(/\\n/g, "\n") : privateKeyPem;
-  return `${header}.${payload}.${signer.sign(key).toString("base64url")}`;
+  return `${header}.${payload}.${signer.sign(normalizePrivateKey(privateKeyPem)).toString("base64url")}`;
+}
+
+/**
+ * private key จาก env: ตัดช่องว่างและเครื่องหมายคำพูดครอบ (คัดลอกจากไฟล์ JSON มาทั้ง "...")
+ * แล้วแปลง \n แบบตัวอักษร (env บน Vercel มักเก็บแบบนี้) เป็นขึ้นบรรทัดใหม่
+ */
+export function normalizePrivateKey(raw: string): string {
+  let key = raw.trim();
+  if (key.length >= 2 && key.startsWith('"') && key.endsWith('"')) key = key.slice(1, -1).trim();
+  return key.includes("\\n") ? key.replace(/\\n/g, "\n") : key;
+}
+
+/** โหมดจำลอง (ทดสอบ/e2e) — ปิดเสมอบน production ของ Vercel แม้ตั้ง SARABAN_DRIVE_FAKE_DIR ไว้โดยพลาด */
+export function isFakeDrive(): boolean {
+  return Boolean(process.env.SARABAN_DRIVE_FAKE_DIR) && process.env.VERCEL_ENV !== "production";
 }
 
 function fakeDir(): string | null {
-  return process.env.SARABAN_DRIVE_FAKE_DIR || null;
+  return isFakeDrive() ? process.env.SARABAN_DRIVE_FAKE_DIR! : null;
 }
 
 /** id ของโฟลเดอร์ใน Shared Drive ที่เก็บไฟล์สารบรรณ */

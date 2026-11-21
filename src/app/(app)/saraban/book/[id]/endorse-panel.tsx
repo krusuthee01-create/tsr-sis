@@ -112,11 +112,14 @@ type Signer = { signature: Blob | null | undefined; hasFile: boolean; sign: (not
 /**
  * ลงนามคำเกษียนลงไฟล์ล่าสุด (ใช้ร่วมทุกบทบาท): คืน fileId ใหม่, null = ไม่ฝังลงไฟล์ (ไม่มีข้อความ/ไฟล์ หรือไฟล์ถูกล็อก), false = ล้มเหลว (แจ้งแล้ว)
  * ไฟล์ที่ลงนามแล้วแต่บันทึกขั้นตอนไม่สำเร็จ: ลองใหม่ด้วยข้อความเดิมใช้ไฟล์นี้ ไม่ลงนามซ้ำ
+ * ลงนามบนไฟล์ที่หน้าโหลดมาเสมอ (จำ id ไว้ตั้งแต่ครั้งแรกที่กดลงนาม) — แก้ข้อความแล้วลองใหม่ต้องไม่ลงนามทับ
+ * ฉบับที่ลงนามจากครั้งที่ล้มเหลว (ซึ่งอาจกลายเป็นไฟล์ล่าสุดเมื่อหน้ารีเฟรช)
  */
 function useSigner(detail: BookDetail, me: Me): Signer {
   const toast = useToast();
   const [signature, setSignature] = useState<Blob | null | undefined>(undefined); // undefined = กำลังโหลด
   const signed = useRef<{ note: string; fileId: string } | null>(null);
+  const baseFileId = useRef<string | null>(null);
   const latest = latestFile(detail.files);
   const { book } = detail;
 
@@ -133,8 +136,9 @@ function useSigner(detail: BookDetail, me: Me): Signer {
     const text = note.trim();
     if (!text || !latest) return null;
     if (signed.current?.note === text) return signed.current.fileId;
+    baseFileId.current ??= latest.id;
     try {
-      const fileId = await signAndUpload(book.id, latest.id, {
+      const fileId = await signAndUpload(book.id, baseFileId.current, {
         note: text, signerName: me.name, position, date: todayISO(),
         fileName: `เกษียน รับที่ ${book.receive_no}-${book.year}.pdf`,
       }, signature ?? null, place);
@@ -149,7 +153,7 @@ function useSigner(detail: BookDetail, me: Me): Signer {
       return false;
     }
   }
-  return { signature, hasFile: !!latest, sign, done: () => { signed.current = null; } };
+  return { signature, hasFile: !!latest, sign, done: () => { signed.current = null; baseFileId.current = null; } };
 }
 
 type Route = { kind: "head"; id: string } | { kind: "teachers"; ids: string[] } | { kind: "close" };

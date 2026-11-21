@@ -160,6 +160,15 @@ create policy saraban_presets_write on public.saraban_presets for all to authent
   using (public.saraban_role() in ('director', 'clerk'))
   with check (public.saraban_role() in ('director', 'clerk'));
 
+-- ประวัติการแก้ไข: ตาราง saraban_* มีเรื่อง/เลขที่/หน่วยงานของหนังสือ (รวมหนังสือลับ)
+-- ผู้บริหาร/ผู้ดูแลระบบ SIS เห็นได้เฉพาะเมื่อเป็น ผอ. หรือธุรการในระบบสารบรรณด้วย (ตารางอื่นคงสิทธิ์เดิมจาก 0002)
+drop policy if exists audit_read on public.audit_log;
+create policy audit_read on public.audit_log for select to authenticated
+  using (
+    (select public.has_any_role(array['admin','executive']))
+    and (table_name not like 'saraban\_%' or (select coalesce(public.saraban_role(), '')) in ('director', 'clerk'))
+  );
+
 -- saraban_counters: ไม่มี policy (authenticated ถูก revoke ด้านล่าง)
 drop policy if exists push_subscriptions_owner on public.push_subscriptions;
 create policy push_subscriptions_owner on public.push_subscriptions for all to authenticated
@@ -604,18 +613,24 @@ language sql stable security definer set search_path = public as $$
   order by s.first_name, s.last_name
 $$;
 
--- ผู้รับที่ยังไม่อ่านหนังสือที่ใกล้/เลยกำหนด (เรียกจากงานแจ้งเตือนฝั่งเซิร์ฟเวอร์เท่านั้น: service_role)
+-- ผู้ที่ต้องดำเนินการกับหนังสือที่ใกล้/เลยกำหนด (เรียกจากงานแจ้งเตือนฝั่งเซิร์ฟเวอร์เท่านั้น: service_role)
+-- = ผู้รับที่ยังไม่อ่าน + ผู้ถือหนังสือขั้นถัดไป (current_holder) เมื่อรอเกษียณ/รอสั่งการ — คนเดียวกันได้แถวเดียว
 drop function if exists public.saraban_due_reminders();
 create function public.saraban_due_reminders()
 returns table(staff_id uuid, book_id uuid, subject text, due_date date, secret boolean)
 language sql stable security definer set search_path = public as $$
-  select r.staff_id, b.id, b.subject, b.due_date, b.secret
-  from saraban_recipients r
-  join saraban_books b on b.id = r.book_id
-  join staff s on s.id = r.staff_id and s.active
-  where r.read_at is null and b.deleted_at is null and b.status <> 'closed'
+  select x.staff_id, b.id, b.subject, b.due_date, b.secret
+  from (
+    select r.staff_id, r.book_id from saraban_recipients r where r.read_at is null
+    union
+    select b2.current_holder, b2.id from saraban_books b2
+    where b2.current_holder is not null and b2.status in ('proposed', 'endorsed')
+  ) x
+  join saraban_books b on b.id = x.book_id
+  join staff s on s.id = x.staff_id and s.active
+  where b.deleted_at is null and b.status <> 'closed'
     and b.due_date is not null and b.due_date <= today_th() + 1
-  order by b.due_date, b.id, r.staff_id
+  order by b.due_date, b.id, x.staff_id
 $$;
 
 -- กำหนดบทบาทสารบรรณและกลุ่มงาน (ผู้ดูแลระบบ หรือ ผอ. ในระบบสารบรรณ)

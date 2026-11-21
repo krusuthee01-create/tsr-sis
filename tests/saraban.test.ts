@@ -5,7 +5,7 @@ import { createVerify, generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildServiceJwt, createUploadSession, getFileMeta } from "../src/lib/saraban/drive.ts";
+import { buildServiceJwt, createUploadSession, driveFolderId, getFileMeta, isFakeDrive, normalizePrivateKey } from "../src/lib/saraban/drive.ts";
 import { formatReminderBody } from "../src/lib/saraban/push-text.ts";
 import { embedPng, endorsementLines, pngSizePt, receiveStampLines } from "../src/lib/saraban/stamp.ts";
 import { PDFDocument } from "pdf-lib";
@@ -37,6 +37,39 @@ test("JWT: private key จาก env ที่มี \\n แบบตัวอ�
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const pem = privateKey.export({ type: "pkcs8", format: "pem" }).toString().replace(/\n/g, "\\n");
   assert.equal(buildServiceJwt("a@b.c", pem, 1).split(".").length, 3);
+});
+
+test("private key จาก env: ตัดเครื่องหมายคำพูดครอบและช่องว่าง แล้วแปลง \\n", () => {
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const pem = privateKey.export({ type: "pkcs8", format: "pem" }).toString().trim();
+  const escaped = pem.replace(/\n/g, "\\n");
+  assert.equal(normalizePrivateKey(`  "${escaped}"\n`), pem);
+  assert.equal(normalizePrivateKey(escaped), pem);
+  assert.equal(normalizePrivateKey(pem), pem);
+  assert.equal(buildServiceJwt("a@b.c", `"${escaped}"`, 1).split(".").length, 3);
+});
+
+test("Drive โหมดจำลอง: ปิดบน production ของ Vercel", () => {
+  const saved = { dir: process.env.SARABAN_DRIVE_FAKE_DIR, env: process.env.VERCEL_ENV, folder: process.env.SARABAN_DRIVE_FOLDER_ID };
+  try {
+    delete process.env.SARABAN_DRIVE_FOLDER_ID;
+    process.env.SARABAN_DRIVE_FAKE_DIR = "/tmp/x";
+    delete process.env.VERCEL_ENV;
+    assert.equal(isFakeDrive(), true);
+    assert.equal(driveFolderId(), "fake-folder");
+    process.env.VERCEL_ENV = "preview";
+    assert.equal(isFakeDrive(), true);
+    process.env.VERCEL_ENV = "production";
+    assert.equal(isFakeDrive(), false);
+    assert.throws(() => driveFolderId(), /SARABAN_DRIVE_FOLDER_ID/);
+    delete process.env.SARABAN_DRIVE_FAKE_DIR;
+    delete process.env.VERCEL_ENV;
+    assert.equal(isFakeDrive(), false);
+  } finally {
+    for (const [k, v] of [["SARABAN_DRIVE_FAKE_DIR", saved.dir], ["VERCEL_ENV", saved.env], ["SARABAN_DRIVE_FOLDER_ID", saved.folder]] as const) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  }
 });
 
 test("Drive โหมดจำลอง: เปิด session แล้วอ่าน metadata", async () => {
@@ -78,7 +111,14 @@ const lineBase = {
 test("formatLineMessage: หนังสือลับไม่เผยชื่อเรื่อง", () => {
   const t = formatLineMessage({ ...lineBase, secret: true });
   assert.ok(!t.includes(lineBase.subject));
-  assert.ok(t.includes("หนังสือลับ"));
+  assert.ok(t.includes("หนังสือลับ — โปรดดูในระบบ"));
+  // ไม่เผยข้อสั่งการ หน่วยงาน หรือชื่อผู้รับผิดชอบ แม้ส่งค่ามา
+  const leak = formatLineMessage({ ...lineBase, secret: true, command: "ดำเนินการสอบสวนครูสมปอง" });
+  for (const s of [lineBase.subject, lineBase.fromOrg, "ดำเนินการสอบสวนครูสมปอง", ...lineBase.assignees]) assert.ok(!leak.includes(s), s);
+  assert.ok(!leak.includes("จาก:") && !leak.includes("ผู้รับผิดชอบ") && !leak.includes("สั่งการ"));
+  // ยังมีเลขรับ ความเร่งด่วน และลิงก์
+  const urgent = formatLineMessage({ ...lineBase, secret: true, urgency: 3 });
+  assert.ok(urgent.includes("12/2569") && urgent.includes("[ด่วนที่สุด]") && urgent.endsWith(lineBase.url));
 });
 
 test("formatLineMessage: ระดับความด่วน", () => {
@@ -396,9 +436,22 @@ test("service worker: PDF สารบรรณ cache-first (เก็บไม�
   assert.equal(fetched.filter((u) => u.endsWith("/denied")).length, 2);
   // API อื่นของสารบรรณไม่ผ่าน service worker
   for (const p of ["/sis/saraban/api/upload-session", "/sis/saraban/api/fake-drive/x", "/sis/saraban/api/cron/reminders"]) assert.equal(await get(p), null, p);
-  // หน้า /sis/saraban ยังใช้ network-first เดิม (respondWith ถูกเรียก)
-  assert.notEqual(await get("/sis/saraban", "navigate"), null);
-  assert.equal(stores.has("tsr-v4-pages"), true);
+  // หน้าเว็บสารบรรณ (HTML และ RSC): ผ่านเครือข่ายแต่ไม่เก็บแคช
+  assert.equal((await get("/sis/saraban", "navigate"))!.status, 200);
+  assert.equal((await get("/sis/saraban/book/abc", "navigate"))!.status, 200);
+  const getRsc = async (path: string) => {
+    let res = null as Promise<Response> | null;
+    handlers.fetch({ request: { method: "GET", url: "https://gotime.test" + path, mode: "cors", headers: { get: (h: string) => (h === "RSC" ? "1" : null) } },
+      respondWith: (p: Promise<Response>) => { res = p; }, waitUntil: () => {} });
+    return res ? await res : null;
+  };
+  assert.equal((await getRsc("/sis/saraban/book/abc?_rsc=1"))!.status, 200);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal([...(stores.get("tsr-v5-pages") ?? new Map()).keys()].some((k) => String(k).includes("/saraban")), false, "ไม่เก็บหน้าสารบรรณ");
+  // หน้าอื่นยังเก็บตามเดิม
+  await get("/sis/attendance", "navigate");
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(stores.has("tsr-v5-pages"), true);
 
   // เกิน 200: ลบเก่าสุดก่อน แต่ไฟล์ที่เพิ่งเปิดซ้ำ (file 1) ถูกย้ายไปท้ายจึงยังอยู่
   for (let i = 2; i <= 201; i++) {
@@ -411,6 +464,20 @@ test("service worker: PDF สารบรรณ cache-first (เก็บไม�
   assert.equal(keys.includes("https://gotime.test" + file(2)), false);
   assert.equal(keys.at(-1), "https://gotime.test" + file(201));
 
+  // ไม่มีสัญญาณ: หน้าสารบรรณไม่อ่านจากแคช (ตอบหน้าออฟไลน์) · PDF ที่ไม่เคยเปิดตอบข้อความภาษาไทย 503 · PDF ที่เคยเปิดยังอ่านได้
+  const realFetch = sandbox.fetch;
+  sandbox.fetch = async () => { throw new TypeError("offline"); };
+  const offlinePage = new Response("offline-page");
+  sandbox.caches.match = (async (k: unknown) => (k === "/sis/offline" ? offlinePage.clone() : new Response("stale-saraban"))) as unknown as typeof sandbox.caches.match;
+  assert.equal(await (await get("/sis/saraban/book/abc", "navigate"))!.text(), "offline-page");
+  assert.equal((await getRsc("/sis/saraban/book/abc?_rsc=1"))!.type, "error");
+  const miss = (await get(file(9999)))!;
+  assert.equal(miss.status, 503);
+  assert.match(await miss.text(), /ไฟล์นี้ยังไม่เคยเปิดบนเครื่องนี้ กรุณาเชื่อมต่ออินเทอร์เน็ต/);
+  assert.equal(await (await get(file(201)))!.text(), "pdf:https://gotime.test" + file(201));
+  sandbox.fetch = realFetch;
+  sandbox.caches.match = async () => undefined;
+
   // activate ของรุ่นใหม่ไม่ลบแคช PDF
   let wait: Promise<unknown> = Promise.resolve();
   (sandbox.self as Record<string, unknown>).clients = { claim: () => Promise.resolve() };
@@ -419,4 +486,45 @@ test("service worker: PDF สารบรรณ cache-first (เก็บไม�
   await wait;
   assert.equal(stores.has("tsr-saraban-files"), true);
   assert.equal(stores.has("tsr-v3-pages"), false);
+});
+
+test("ออกจากระบบ: ลบแคช PDF และหน้า /sis/saraban ในแคช tsr-*-pages รุ่นเก่า, ยกเลิก push ไม่ขวางแม้ลบแถวไม่สำเร็จ", async () => {
+  const { clearSarabanCache, clearSarabanDevice } = await import("../src/lib/saraban/cache-client.ts");
+  const g = globalThis as Record<string, unknown>;
+  const stores = new Map<string, Map<string, Request>>();
+  const mk = (name: string, urls: string[]) => stores.set(name, new Map(urls.map((u) => [u, new Request(u)])));
+  mk("tsr-saraban-files", ["https://x.test/sis/saraban/api/file/1"]);
+  mk("tsr-v4-pages", ["https://x.test/sis/saraban", "https://x.test/sis/saraban/book/1?_rsc=a", "https://x.test/sis/attendance", "https://x.test/sis/sarabanx"]);
+  mk("shell-v2", ["https://x.test/sis/saraban/other-system"]);
+  const saved = { caches: g.caches, location: g.location, navigator: Object.getOwnPropertyDescriptor(globalThis, "navigator") };
+  g.caches = {
+    delete: async (k: string) => stores.delete(k),
+    keys: async () => [...stores.keys()],
+    open: async (k: string) => {
+      const m = stores.get(k)!;
+      return { keys: async () => [...m.values()], delete: async (r: Request) => m.delete(r.url) };
+    },
+  };
+  g.location = { href: "https://x.test/sis" };
+  let unsubscribed = 0;
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { serviceWorker: { getRegistration: async () => ({
+    pushManager: { getSubscription: async () => ({ endpoint: "https://push.example.com/abc", unsubscribe: async () => { unsubscribed++; return true; } }) },
+  }) } } });
+  try {
+    await clearSarabanCache();
+    assert.equal(stores.has("tsr-saraban-files"), false);
+    assert.deepEqual([...stores.get("tsr-v4-pages")!.keys()], ["https://x.test/sis/attendance", "https://x.test/sis/sarabanx"]);
+    assert.equal(stores.get("shell-v2")!.size, 1, "แคชระบบอื่นไม่แตะ");
+    // server action โหลดไม่ได้ในการทดสอบ (เหมือนเครือข่ายล่ม) — ยังต้อง unsubscribe และไม่ throw
+    await clearSarabanDevice();
+    assert.equal(unsubscribed, 1);
+    // ไม่มี Cache API / service worker ก็ไม่ throw
+    g.caches = undefined;
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: {} });
+    await clearSarabanDevice();
+  } finally {
+    g.caches = saved.caches;
+    g.location = saved.location;
+    if (saved.navigator) Object.defineProperty(globalThis, "navigator", saved.navigator);
+  }
 });

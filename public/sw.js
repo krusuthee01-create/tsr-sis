@@ -6,9 +6,12 @@
 // - PDF สารบรรณ (/sis/saraban/api/file/<id>): cache-first ในแคช tsr-saraban-files เปิดซ้ำ/ไม่มีสัญญาณก็อ่านได้
 //   ไฟล์แต่ละเวอร์ชันไม่เปลี่ยนเนื้อหา (id ใหม่ทุกครั้งที่ลงนาม) · เก็บไม่เกิน 200 ไฟล์ ลบที่เก่าสุดก่อน
 //   แคชนี้ไม่ผูกกับ VERSION จึงอยู่รอดเมื่อ deploy รุ่นใหม่ · ออกจากระบบ/เปิดหน้าเข้าสู่ระบบแล้วหน้าเว็บลบทิ้ง (src/lib/saraban/cache-client.ts)
+//   ไม่มีในแคชและไม่มีสัญญาณ: ตอบหน้าข้อความภาษาไทย (503)
 // - API อื่นของสารบรรณ (/sis/saraban/api/*) ไม่แคช
+// - หน้าเว็บสารบรรณ (/sis/saraban/** ทั้ง HTML และ RSC): ดึงจากเครือข่ายเท่านั้น ไม่เก็บแคช
+//   (มีเรื่อง/หน่วยงานของหนังสือ รวมหนังสือลับ — ห้ามค้างในเครื่องหลังออกจากระบบ) ไม่มีสัญญาณใช้หน้าออฟไลน์
 const BASE = "/sis";
-const VERSION = "tsr-v4";
+const VERSION = "tsr-v5";
 const SARABAN_FILES = "tsr-saraban-files";
 const SARABAN_FILES_MAX = 200;
 const STATIC = `${VERSION}-static`;
@@ -52,6 +55,13 @@ self.addEventListener("fetch", (event) => {
   }
   // API อื่นของสารบรรณ (อัปโหลด, cron, ไฟล์จำลอง) ไม่แคช
   if (path.startsWith("/saraban/api/")) return;
+  const isPage = req.mode === "navigate" || req.headers.get("RSC") === "1";
+  // หน้าเว็บสารบรรณ: เครือข่ายเท่านั้น ไม่เก็บ ไม่อ่านจากแคช (แคชรุ่นเก่าอาจยังมีอยู่)
+  if (path === "/saraban" || path.startsWith("/saraban/")) {
+    if (!isPage) return;
+    event.respondWith(fetch(req).catch(async () => (req.mode === "navigate" ? (await caches.match(OFFLINE)) || Response.error() : Response.error())));
+    return;
+  }
 
   if (path.startsWith("/_next/static/") || path.startsWith("/icons/")) {
     event.respondWith(
@@ -64,7 +74,6 @@ self.addEventListener("fetch", (event) => {
   }
 
   // หน้าเว็บและข้อมูล RSC ของหน้า (เก็บแยกตาม URL)
-  const isPage = req.mode === "navigate" || req.headers.get("RSC") === "1";
   if (!isPage) return;
   event.respondWith(
     fetch(req)
@@ -98,7 +107,18 @@ async function sarabanFile(event) {
     event.waitUntil(cache.delete(key).then(() => cache.put(key, again)).catch(() => {}));
     return hit;
   }
-  const res = await fetch(req);
+  let res;
+  try {
+    res = await fetch(req);
+  } catch {
+    // ไม่มีสัญญาณและไม่เคยเปิดไฟล์นี้บนเครื่อง
+    return new Response(
+      '<!doctype html><html lang="th"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+        '<body style="font-family:sans-serif;padding:1.5rem;text-align:center;color:#334155">' +
+        "<p>ไฟล์นี้ยังไม่เคยเปิดบนเครื่องนี้ กรุณาเชื่อมต่ออินเทอร์เน็ต</p></body></html>",
+      { status: 503, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } },
+    );
+  }
   if (res.status === 200 && !res.redirected) {
     const copy = res.clone();
     event.waitUntil(cache.put(key, copy).then(() => trimCache(cache, SARABAN_FILES_MAX)).catch(() => {}));
