@@ -16,18 +16,19 @@ export function receiveStampLines(s: { schoolName: string; receiveNo: number; ye
   ];
 }
 
-// สระบน/ล่าง วรรณยุกต์ และเครื่องหมายผสม ห้ามขึ้นต้นบรรทัด
-const COMBINING = /^[ัิ-ฺ็-๎]/;
+// อักขระที่ห้ามขึ้นต้นบรรทัด: สระบน/ล่าง วรรณยุกต์ ำ ะ า ๅ ๆ ฯ
+const NO_START = /^[\u0E2F\u0E30-\u0E3A\u0E45-\u0E4E]/;
+// สระหน้า (เ แ โ ใ ไ) ห้ามอยู่ท้ายบรรทัด
+const NO_END = /[\u0E40-\u0E44]$/;
 
-/** ตัดคำที่ไม่มีช่องว่างและยาวเกิน maxChars (นับตาม code point) โดยไม่ให้บรรทัดใหม่ขึ้นต้นด้วยอักขระผสม */
+/** ตัดคำที่ไม่มีช่องว่างและยาวเกิน maxChars (นับตาม code point) โดยไม่ผิดกติกาขึ้น/ท้ายบรรทัด และไม่แทรกช่องว่าง */
 function hardBreak(word: string, maxChars: number): string[] {
   const cps = [...word];
   const out: string[] = [];
   let i = 0;
   while (cps.length - i > maxChars) {
     let end = i + maxChars;
-    // ถอยไปก่อนตัวฐานหากตัวถัดไปเป็นอักขระผสม
-    while (end > i + 1 && COMBINING.test(cps[end])) end--;
+    while (end > i + 1 && (NO_START.test(cps[end]) || NO_END.test(cps[end - 1]))) end--;
     out.push(cps.slice(i, end).join(""));
     i = end;
   }
@@ -35,29 +36,68 @@ function hardBreak(word: string, maxChars: number): string[] {
   return out;
 }
 
+/** แยกย่อหน้าเป็นโทเคน {text, space}: ใช้ Intl.Segmenter (ไทย) ถ้ามี ไม่เช่นนั้นแยกตามช่องว่าง */
+function tokenize(para: string): { text: string; space: boolean }[] {
+  const raw: { text: string; space: boolean }[] = [];
+  const Seg = (Intl as { Segmenter?: typeof Intl.Segmenter }).Segmenter;
+  if (Seg) {
+    for (const { segment } of new Seg("th", { granularity: "word" }).segment(para)) {
+      raw.push({ text: segment, space: /^\s+$/.test(segment) });
+    }
+  } else {
+    for (const part of para.split(/(\s+)/)) if (part) raw.push({ text: part, space: /^\s+$/.test(part) });
+  }
+  // รวมโทเคนที่ขึ้นต้นด้วยอักขระห้ามขึ้นต้นกับคำก่อนหน้า และสระหน้าท้ายคำกับคำถัดไป
+  const out: { text: string; space: boolean }[] = [];
+  let carry = false;
+  for (const t of raw) {
+    const prev = out[out.length - 1];
+    if (!t.space && prev && !prev.space && (carry || NO_START.test(t.text))) prev.text += t.text;
+    else out.push({ ...t });
+    const last = out[out.length - 1];
+    carry = !last.space && NO_END.test(last.text);
+  }
+  return out;
+}
+
 export function endorsementLines(
   e: { note: string; signerName: string; position: string; date: string },
   maxChars = 48,
 ): string[] {
+  const len = (x: string) => [...x].length;
   const lines: string[] = [];
-  let cur = "";
   for (const para of e.note.split(/\r?\n/)) {
-    for (const word of para.split(/\s+/).filter(Boolean)) {
-      const parts = [...word].length > maxChars ? hardBreak(word, maxChars) : [word];
-      for (const part of parts) {
-        const joined = cur ? `${cur} ${part}` : part;
-        if ([...joined].length <= maxChars) {
-          cur = joined;
-        } else {
-          if (cur) lines.push(cur);
-          cur = part;
-        }
+    let cur = "";
+    let gap = false;
+    for (const tok of tokenize(para)) {
+      if (tok.space) {
+        gap = cur !== "";
+        continue;
+      }
+      const cand = cur + (gap ? " " : "") + tok.text;
+      gap = false;
+      if (len(cand) <= maxChars) {
+        cur = cand;
+        continue;
+      }
+      if (cur) lines.push(cur);
+      if (len(tok.text) > maxChars) {
+        const parts = hardBreak(tok.text, maxChars);
+        cur = parts.pop() as string;
+        lines.push(...parts);
+      } else {
+        cur = tok.text;
       }
     }
     if (cur) lines.push(cur);
-    cur = "";
   }
   return [...lines, `(${e.signerName})`, e.position, formatThaiDate(e.date, "short")];
+}
+
+/** ขนาดภาพ PNG เป็น point (อ่าน IHDR แล้วหาร STAMP_SCALE) */
+export function pngSizePt(png: Uint8Array): { width: number; height: number } {
+  const dv = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  return { width: dv.getUint32(16) / STAMP_SCALE, height: dv.getUint32(20) / STAMP_SCALE };
 }
 
 /** ฝัง PNG ลงหน้า PDF (หน่วย point นับจากมุมซ้ายล่าง, page เริ่มที่ 0) */
@@ -66,7 +106,11 @@ export async function embedPng(
   png: Uint8Array,
   box: { page: number; x: number; y: number; width: number; height: number },
 ): Promise<Uint8Array> {
-  const doc = await PDFDocument.load(pdf);
+  if (!(box.width > 0) || !(box.height > 0)) throw new Error("ขนาดตราประทับไม่ถูกต้อง");
+  const doc = await PDFDocument.load(pdf, { ignoreEncryption: true });
+  if (!Number.isInteger(box.page) || box.page < 0 || box.page >= doc.getPageCount()) {
+    throw new Error("ไม่พบหน้าที่ " + (box.page + 1) + " ในไฟล์ PDF");
+  }
   const img = await doc.embedPng(png);
   const page = doc.getPage(box.page);
   page.drawImage(img, { x: box.x, y: box.y, width: box.width, height: box.height });

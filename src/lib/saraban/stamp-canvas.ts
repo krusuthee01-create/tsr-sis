@@ -10,17 +10,21 @@ function fontFamily(): string {
   return v ? `${v}, ${FALLBACK_FONT}` : FALLBACK_FONT;
 }
 
-async function loadFont(family: string, size: number) {
-  // ให้แน่ใจว่าฟอนต์ทั้งน้ำหนักปกติและหนาโหลดแล้วก่อนวาด
-  await Promise.all([`${size}px ${family}`, `bold ${size}px ${family}`].map((f) => document.fonts.load(f, "ก").catch(() => [])));
+async function loadFont(family: string, size: number, text: string) {
+  // โหลดฟอนต์ให้ครอบคลุมอักขระที่จะวาดจริง (ไทย/ละติน/ตัวเลข) ทั้งน้ำหนัก 400 และ 700
+  await Promise.all([`400 ${size}px ${family}`, `700 ${size}px ${family}`].map((f) => document.fonts.load(f, text).catch(() => [])));
   await document.fonts.ready;
 }
 
 function toPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(async (b) => {
-      if (!b) return reject(new Error("สร้างภาพ PNG ไม่สำเร็จ"));
-      resolve(new Uint8Array(await b.arrayBuffer()));
+      try {
+        if (!b) throw new Error("สร้างภาพ PNG ไม่สำเร็จ");
+        resolve(new Uint8Array(await b.arrayBuffer()));
+      } catch (err) {
+        reject(err);
+      }
     }, "image/png");
   });
 }
@@ -38,10 +42,13 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 export async function drawReceiveStamp(lines: string[], qrUrl: string): Promise<Uint8Array> {
   const family = fontFamily();
   const fs = 14, lh = 20, pad = 10, qr = 76;
-  await loadFont(family, fs);
+  await loadFont(family, fs, lines.join(" "));
   const measure = document.createElement("canvas").getContext("2d")!;
-  measure.font = `${fs}px ${family}`;
-  const textW = Math.max(...lines.map((l) => measure.measureText(l).width));
+  // วัดด้วยฟอนต์เดียวกับที่วาด (บรรทัดแรกตัวหนา)
+  const textW = Math.max(...lines.map((l, i) => {
+    measure.font = `${i === 0 ? "700" : "400"} ${fs}px ${family}`;
+    return measure.measureText(l).width;
+  }));
   const w = Math.ceil(pad * 3 + qr + textW);
   const h = Math.max(pad * 2 + lines.length * lh, pad * 2 + qr);
 
@@ -54,14 +61,14 @@ export async function drawReceiveStamp(lines: string[], qrUrl: string): Promise<
   ctx.lineWidth = 1.5;
   ctx.strokeRect(1, 1, w - 2, h - 2);
 
-  const qrImg = await loadImage(await QRCode.toDataURL(qrUrl, { margin: 0, width: qr * STAMP_SCALE, color: { dark: INK, light: "#0000" } }));
+  const qrImg = await loadImage(await QRCode.toDataURL(qrUrl, { margin: 0, scale: STAMP_SCALE * 4, color: { dark: INK, light: "#0000" } }));
   ctx.drawImage(qrImg, pad, (h - qr) / 2, qr, qr);
 
   ctx.fillStyle = INK;
   ctx.textBaseline = "middle";
   const top = (h - lines.length * lh) / 2;
   lines.forEach((l, i) => {
-    ctx.font = `${i === 0 ? "bold " : ""}${fs}px ${family}`;
+    ctx.font = `${i === 0 ? "700" : "400"} ${fs}px ${family}`;
     ctx.fillText(l, pad * 2 + qr, top + i * lh + lh / 2);
   });
   return toPng(canvas);
@@ -71,9 +78,9 @@ export async function drawReceiveStamp(lines: string[], qrUrl: string): Promise<
 export async function drawEndorsement(lines: string[], signature?: ImageBitmap): Promise<Uint8Array> {
   const family = fontFamily();
   const fs = 14, lh = 20, pad = 8, sigH = 44;
-  await loadFont(family, fs);
+  await loadFont(family, fs, lines.join(" "));
   const measure = document.createElement("canvas").getContext("2d")!;
-  measure.font = `${fs}px ${family}`;
+  measure.font = `400 ${fs}px ${family}`;
   const textW = Math.max(...lines.map((l) => measure.measureText(l).width));
   const w = Math.ceil(pad * 2 + textW);
   const h = pad * 2 + lines.length * lh + (signature ? sigH : 0);
@@ -92,8 +99,10 @@ export async function drawEndorsement(lines: string[], signature?: ImageBitmap):
   let y = pad;
   lines.forEach((l, i) => {
     if (i === bodyCount && signature) {
-      const sh = sigH - 4;
-      const sw = Math.min(w - pad * 2, (signature.width / signature.height) * sh);
+      // ย่อด้วยตัวคูณเดียวกันทั้งกว้างและสูง ไม่ให้ภาพเพี้ยนสัดส่วน
+      const k = Math.min((w - pad * 2) / signature.width, (sigH - 4) / signature.height);
+      const sw = signature.width * k;
+      const sh = signature.height * k;
       ctx.drawImage(signature, (w - sw) / 2, y, sw, sh);
       y += sigH;
     }

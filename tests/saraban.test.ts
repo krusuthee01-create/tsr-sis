@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildServiceJwt, createUploadSession, getFileMeta } from "../src/lib/saraban/drive.ts";
 import { formatReminderBody } from "../src/lib/saraban/push-text.ts";
-import { embedPng, endorsementLines, receiveStampLines } from "../src/lib/saraban/stamp.ts";
+import { embedPng, endorsementLines, pngSizePt, receiveStampLines } from "../src/lib/saraban/stamp.ts";
 import { PDFDocument } from "pdf-lib";
 import { formatLineMessage, pushLineGroup } from "../src/lib/saraban/line.ts";
 
@@ -149,4 +149,34 @@ test("embedPng ฝัง PNG ลงหน้า PDF", async () => {
   const re = await PDFDocument.load(out);
   assert.equal(re.getPageCount(), 1);
   assert.ok(out.length > pdf.length);
+});
+
+test("คำเกษียน: ประโยคไทยไม่มีช่องว่างตัดตามขอบเขตคำ", () => {
+  const note = "ขอเชิญคณะครูและบุคลากรทางการศึกษาทุกท่านเข้าร่วมประชุมเพื่อชี้แจงแนวทางการดำเนินงานตามนโยบายของสำนักงานเขตพื้นที่การศึกษา";
+  const l = endorsementLines({ note, signerName: "ก", position: "ข", date: "2026-10-22" });
+  const body = l.slice(0, -3);
+  assert.ok([...note].length > 48 && body.length >= 2);
+  assert.equal(body.join(""), note);
+  for (const x of body) {
+    assert.ok([...x].length <= 48, x);
+    assert.ok(!/^[\u0E2F\u0E30-\u0E3A\u0E45-\u0E4E]/.test(x), x);
+    assert.ok(!/[\u0E40-\u0E44]$/.test(x), x);
+  }
+});
+
+test("pngSizePt อ่านขนาดจาก IHDR หาร STAMP_SCALE", () => {
+  const b = new Uint8Array(24);
+  const dv = new DataView(b.buffer);
+  dv.setUint32(16, 300);
+  dv.setUint32(20, 90);
+  assert.deepEqual(pngSizePt(b), { width: 100, height: 30 });
+});
+
+test("embedPng: หน้าเกินช่วงหรือขนาดไม่ถูกต้องต้อง throw", async () => {
+  const doc = await PDFDocument.create();
+  doc.addPage([100, 100]);
+  const pdf = await doc.save();
+  const png = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+  await assert.rejects(embedPng(pdf, png, { page: 3, x: 0, y: 0, width: 10, height: 10 }), /ไม่พบหน้าที่ 4/);
+  await assert.rejects(embedPng(pdf, png, { page: 0, x: 0, y: 0, width: NaN, height: 10 }), /ขนาด/);
 });
