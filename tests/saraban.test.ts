@@ -10,6 +10,7 @@ import { formatReminderBody } from "../src/lib/saraban/push-text.ts";
 import { embedPng, endorsementLines, pngSizePt, receiveStampLines } from "../src/lib/saraban/stamp.ts";
 import { PDFDocument } from "pdf-lib";
 import { formatLineMessage, pushLineGroup } from "../src/lib/saraban/line.ts";
+import { isIsoDate, receiveStampBox, validateRegister } from "../src/lib/saraban/register.ts";
 
 const b64urlJson = (s: string) => JSON.parse(Buffer.from(s, "base64url").toString("utf8"));
 
@@ -179,4 +180,33 @@ test("embedPng: หน้าเกินช่วงหรือขนาดไ�
   const png = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
   await assert.rejects(embedPng(pdf, png, { page: 3, x: 0, y: 0, width: 10, height: 10 }), /ไม่พบหน้าที่ 4/);
   await assert.rejects(embedPng(pdf, png, { page: 0, x: 0, y: 0, width: NaN, height: 10 }), /ขนาด/);
+});
+
+test("isIsoDate: รับเฉพาะวันที่มีจริงรูปแบบ YYYY-MM-DD", () => {
+  assert.equal(isIsoDate("2026-11-21"), true);
+  assert.equal(isIsoDate("2024-02-29"), true);
+  assert.equal(isIsoDate("2026-02-29"), false);
+  assert.equal(isIsoDate("2026-13-01"), false);
+  assert.equal(isIsoDate("21/11/2026"), false);
+  assert.equal(isIsoDate(""), false);
+});
+
+test("validateRegister: ช่องบังคับ วันที่ ความด่วน และเลขรับ", () => {
+  const ok = { docNo: "ศธ 0001/1", docDate: "2026-11-20", fromOrg: "สพป.ตัวอย่าง", toText: "", subject: "ทดสอบ", urgency: 0, secret: false, dueDate: "" };
+  assert.deepEqual(validateRegister(ok), {});
+  assert.deepEqual(validateRegister({ ...ok, receiveNo: 5 }), {});
+  const bad = validateRegister({ ...ok, fromOrg: "  ", subject: "", docDate: "2026-02-30", dueDate: "x", urgency: 4, receiveNo: 0 });
+  assert.deepEqual(Object.keys(bad).sort(), ["docDate", "dueDate", "fromOrg", "receiveNo", "subject", "urgency"]);
+  assert.ok(validateRegister({ ...ok, urgency: 1.5 }).urgency);
+  assert.ok(validateRegister({ ...ok, subject: "ก".repeat(1001) }).subject);
+});
+
+test("receiveStampBox: มุมขวาบนของหน้าแรก เว้นขอบ 18pt", () => {
+  assert.deepEqual(receiveStampBox({ width: 595, height: 842 }, { width: 200, height: 96 }), { page: 0, x: 377, y: 728, width: 200, height: 96 });
+  // หน้าแคบกว่าตรา: ย่อตามสัดส่วน ยังอยู่ในหน้า
+  const b = receiveStampBox({ width: 136, height: 300 }, { width: 200, height: 96 });
+  assert.equal(b.width, 100);
+  assert.equal(b.height, 48);
+  assert.equal(b.x, 18);
+  assert.equal(b.y, 300 - 48 - 18);
 });

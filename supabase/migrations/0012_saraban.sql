@@ -635,3 +635,25 @@ revoke execute on function public.saraban_add_file(uuid, text, text, text, bigin
 revoke execute on function public.saraban_due_reminders() from public, anon, authenticated;
 grant execute on function public.saraban_add_file(uuid, text, text, text, bigint, uuid) to service_role;
 grant execute on function public.saraban_due_reminders() to service_role;
+
+-- ---------- 10) ข้อมูลของฉัน: เพิ่มบทบาทสารบรรณและกลุ่มงาน ----------
+-- (เนื้อหาเดิมจาก 0002 เพิ่มคีย์ saraban_role, work_group — create or replace คงสิทธิ์ execute เดิมไว้)
+create or replace function public.my_profile() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'id', s.id, 'prefix', s.prefix, 'first_name', s.first_name, 'last_name', s.last_name,
+    'roles', s.roles, 'approved', s.approved, 'active', s.active,
+    'font_scale', s.font_scale, 'tour_done', s.tour_done, 'email', s.email,
+    'saraban_role', s.saraban_role, 'work_group', s.work_group,
+    'has_admin', exists (select 1 from staff a where 'admin' = any(a.roles)),
+    'homerooms', coalesce((
+      select jsonb_agg(jsonb_build_object('classroom_id', c.id, 'grade', c.grade, 'room', c.room, 'year', c.year, 'kind', h.kind)
+                       order by g.sort, c.room)
+      from homeroom_assignments h
+      join classrooms c on c.id = h.classroom_id
+      join grade_levels g on g.code = c.grade
+      where h.staff_id = s.id and c.year = (select current_year from school_settings where id = 1)
+    ), '[]'::jsonb)
+  )
+  from staff s where s.user_id = auth.uid()
+$$;

@@ -3,6 +3,8 @@
 import { supabaseAdmin, supabaseServer } from "@/lib/supabase/server";
 import { driveFolderId, getFileMeta } from "@/lib/saraban/drive";
 import { FILE_KINDS, MAX_UPLOAD_BYTES, type FileKind } from "@/lib/saraban/types";
+import { validateRegister, type RegisterInput } from "@/lib/saraban/register";
+import type { PostgrestError } from "@supabase/supabase-js";
 
 type FileResult = { ok: true; fileId: string } | { ok: false; error: string };
 
@@ -49,4 +51,83 @@ export async function finalizeUpload(bookId: string, kind: FileKind, driveFileId
   });
   if (error || typeof fileId !== "string") return { ok: false, error: "บันทึกไฟล์ไม่สำเร็จ: " + (error?.message ?? "") };
   return { ok: true, fileId };
+}
+
+type RegisterResult =
+  | { ok: true; id: string; receiveNo: number; year: number; receivedAt: string }
+  | { ok: false; error: string };
+
+/** แปลงข้อผิดพลาดจาก RPC เป็นภาษาไทย: ข้อความจาก raise exception (P0001) เป็นภาษาไทยอยู่แล้ว ส่งต่อได้ */
+function thaiError(error: PostgrestError, fallback: string): string {
+  console.error("saraban rpc", error);
+  if (error.code === "P0001" && error.message) return error.message;
+  if (error.code === "23505") return "เลขรับนี้มีแล้วในปีนี้ กรุณาใช้เลขอื่น";
+  if (error.code === "22P02" || error.code === "22007" || error.code === "22008") return "ข้อมูลวันที่หรือตัวเลขไม่ถูกต้อง";
+  return fallback;
+}
+
+/** ลงรับหนังสือ (ผอ./ธุรการ) — RPC ตรวจสิทธิ์และออกเลขรับ */
+export async function registerBook(input: RegisterInput): Promise<RegisterResult> {
+  const errors = validateRegister(input);
+  const first = Object.values(errors)[0];
+  if (first) return { ok: false, error: first };
+
+  const sb = await supabaseServer();
+  const { data, error } = await sb.rpc("saraban_register", {
+    p: {
+      doc_no: input.docNo.trim(),
+      doc_date: input.docDate || null,
+      from_org: input.fromOrg.trim(),
+      to_text: input.toText.trim(),
+      subject: input.subject.trim(),
+      urgency: input.urgency,
+      secret: !!input.secret,
+      due_date: input.dueDate || null,
+      receive_no: input.receiveNo ?? null,
+    },
+  });
+  if (error) return { ok: false, error: thaiError(error, "ลงรับไม่สำเร็จ กรุณาลองใหม่") };
+  const r = data as { id: string; year: number; receive_no: number };
+  // เวลาลงรับจริงจากฐานข้อมูล (ใช้พิมพ์บนตรารับ)
+  const { data: book } = await sb.from("saraban_books").select("received_at").eq("id", r.id).maybeSingle();
+  return { ok: true, id: r.id, receiveNo: r.receive_no, year: r.year, receivedAt: book?.received_at ?? new Date().toISOString() };
+}
+
+export type DuplicateBook = { id: string; receive_no: number; subject: string; received_at: string };
+
+/** หนังสือปีนี้ที่เลขที่หนังสือซ้ำ (ใช้เตือนใต้ช่องเลขที่หนังสือ) */
+export async function findDuplicates(docNo: string, fromOrg: string): Promise<DuplicateBook[]> {
+  if (!docNo.trim()) return [];
+  const sb = await supabaseServer();
+  const { data, error } = await sb.rpc("saraban_find_duplicates", { p_doc_no: docNo.slice(0, 100), p_from_org: fromOrg.slice(0, 300) });
+  if (error) {
+    console.error("saraban_find_duplicates", error);
+    return [];
+  }
+  return (data ?? []) as DuplicateBook[];
+}
+
+/** รายชื่อหน่วยงานที่เคยส่งหนังสือ (เติมช่อง "จาก" อัตโนมัติ) */
+export async function orgSuggestions(q: string): Promise<string[]> {
+  const sb = await supabaseServer();
+  const { data, error } = await sb.rpc("saraban_org_suggestions", { p_q: q.slice(0, 100) });
+  if (error) {
+    console.error("saraban_org_suggestions", error);
+    return [];
+  }
+  return (data ?? []) as string[];
+}
+
+export type InboxRow = {
+  id: string; year: number; receive_no: number; doc_no: string | null; subject: string; from_org: string;
+  urgency: number; secret: boolean; due_date: string | null; status: string; received_at: string;
+  holder_name: string | null; unread: boolean; total: number;
+};
+
+/** รายการหนังสือหน้าถัดไป (ปุ่ม "โหลดเพิ่ม") */
+export async function loadInbox(q: string, filter: "all" | "todo" | "unread", offset: number): Promise<{ ok: true; rows: InboxRow[] } | { ok: false; error: string }> {
+  const sb = await supabaseServer();
+  const { data, error } = await sb.rpc("saraban_inbox", { p_q: q.slice(0, 200) || null, p_filter: filter, p_offset: Math.max(0, Math.floor(offset) || 0) });
+  if (error) return { ok: false, error: thaiError(error, "โหลดรายการไม่สำเร็จ") };
+  return { ok: true, rows: (data ?? []) as InboxRow[] };
 }

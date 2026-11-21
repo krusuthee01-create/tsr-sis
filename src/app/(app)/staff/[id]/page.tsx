@@ -5,7 +5,8 @@ import { PageHeader } from "@/components/page-header";
 import { Badge, Card, SectionTitle } from "@/components/ui";
 import { classroomName, gradeSort, isKindergarten, ROLES } from "@/lib/domain";
 import { formatThaiDateTime } from "@/lib/thai-date";
-import { LoginAccount, RoleEditor, StaffForm, TeachingEditor, type StaffData } from "../staff-tools";
+import { LoginAccount, RoleEditor, SarabanRoleEditor, StaffForm, TeachingEditor, type StaffData } from "../staff-tools";
+import { ROLE_LABEL, type SarabanRole } from "@/lib/saraban/types";
 
 export const metadata = { title: "ข้อมูลครู" };
 
@@ -15,18 +16,22 @@ export default async function StaffDetailPage({ params }: { params: Promise<{ id
   const sb = await supabaseServer();
   const [profile, settings] = await Promise.all([getProfile(), getSettings()]);
   const isAdmin = can(profile, "admin");
+  const canSaraban = isAdmin || profile?.saraban_role === "director";
   const year = settings?.current_year ?? 0;
 
   const { data: staff } = await sb.from("staff").select("*").eq("id", id).maybeSingle();
   if (!staff) notFound();
 
-  const [{ data: homerooms }, { data: teaching }, { data: terms }, { data: subjects }, { data: classrooms }] = await Promise.all([
+  const [{ data: homerooms }, { data: teaching }, { data: terms }, { data: subjects }, { data: classrooms }, { data: groupRows }] = await Promise.all([
     sb.from("homeroom_assignments").select("kind, classrooms!inner(id, grade, room, year)").eq("staff_id", id).eq("classrooms.year", year),
     sb.from("teaching_assignments").select("id, terms!inner(term, year), subjects(code, name), classrooms(grade, room)").eq("staff_id", id).eq("terms.year", year),
     sb.from("terms").select("id, term, year").eq("year", year).order("term"),
     sb.from("subjects").select("id, code, name, grade").order("code"),
     sb.from("classrooms").select("id, grade, room").eq("year", year),
+    // กลุ่มงานที่ใช้อยู่แล้ว (ตัวเลือกในช่องกลุ่มงาน)
+    canSaraban ? sb.from("staff").select("work_group").not("work_group", "is", null) : Promise.resolve({ data: [] }),
   ]);
+  const groups = [...new Set(((groupRows ?? []) as { work_group: string | null }[]).map((g) => g.work_group).filter((g): g is string => !!g))].sort((a, b) => a.localeCompare(b, "th"));
   const name = `${staff.prefix ?? ""}${staff.first_name} ${staff.last_name}`.trim();
   type T = { id: number; terms: { term: number; year: number }; subjects: { code: string; name: string }; classrooms: { grade: string; room: number } };
 
@@ -64,6 +69,14 @@ export default async function StaffDetailPage({ params }: { params: Promise<{ id
           ) : (
             <Card><SectionTitle>บทบาท</SectionTitle><p>{staff.roles.map((r: string) => ROLES[r]).join(", ") || "ครู"}</p></Card>
           )}
+          <Card>
+            <SectionTitle>ระบบสารบรรณ</SectionTitle>
+            {canSaraban ? (
+              <SarabanRoleEditor staffId={id} role={staff.saraban_role as SarabanRole} workGroup={staff.work_group} groups={groups} />
+            ) : (
+              <p>{ROLE_LABEL[staff.saraban_role as SarabanRole] ?? "ครู"}{staff.work_group ? ` · กลุ่มงาน${staff.work_group}` : ""}</p>
+            )}
+          </Card>
         </div>
         <Card className="lg:col-span-2">
           <SectionTitle>วิชาที่สอน ปีการศึกษา {year}</SectionTitle>

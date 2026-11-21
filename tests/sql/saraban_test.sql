@@ -368,3 +368,15 @@ begin
   end loop;
   assert (select count(distinct n) from unnest(nos) n) = 20, 'เลขไม่ซ้ำ 20 เลข';
 end $$;
+
+-- my_profile() มีบทบาทสารบรรณและกลุ่มงาน
+select pg_temp.as_user(pg_temp.uid(3));
+do $$ begin
+  assert public.my_profile() ->> 'saraban_role' = 'head', 'my_profile มี saraban_role';
+  assert public.my_profile() ->> 'work_group' = 'วิชาการ', 'my_profile มี work_group';
+end $$;
+select pg_temp.as_user(pg_temp.uid(6));
+do $$ begin
+  assert public.my_profile() ->> 'saraban_role' = 'teacher';
+  assert public.my_profile() -> 'work_group' = 'null'::jsonb;
+end $$;

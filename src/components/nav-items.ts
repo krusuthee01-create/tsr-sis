@@ -4,7 +4,7 @@ import { ATTENDANCE_URL, PORTAL_URL } from "../lib/portal-links.ts";
 export type NavItem = {
   href: string;
   label: string;
-  icon: "home" | "check" | "subject" | "students" | "rooms" | "staff" | "reports" | "audit" | "settings" | "manual" | "nutrition" | "care" | "grades" | "sar" | "switch" | "timeclock";
+  icon: "home" | "check" | "subject" | "students" | "rooms" | "staff" | "reports" | "audit" | "settings" | "manual" | "nutrition" | "care" | "grades" | "sar" | "switch" | "timeclock" | "saraban";
   color: string;
   roles?: string[]; // ไม่ระบุ = ทุกคน
   needsTeaching?: boolean;
@@ -29,6 +29,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/classrooms", label: "ห้องเรียน / ครูที่ปรึกษา", icon: "rooms", color: "#7DD3FC", roles: ["admin"] },
   { href: "/staff", label: "ทะเบียนครู", icon: "staff", color: "#38BDF8" },
   { href: "/reports", label: "รายงาน", icon: "reports", color: "#FDE68A" },
+  { href: "/saraban", label: "สารบรรณ", icon: "saraban", color: "#FCA5A5" },
   { href: "/audit", label: "ประวัติการแก้ไข", icon: "audit", color: "#E2E8F0", roles: ["admin", "executive"] },
   { href: "/settings", label: "ตั้งค่าระบบ", icon: "settings", color: "#E2E8F0", roles: ["admin"] },
   { href: "/manual", label: "คู่มือการใช้งาน", icon: "manual", color: "#F9A8D4" },

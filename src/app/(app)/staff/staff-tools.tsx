@@ -7,7 +7,8 @@ import { supabaseBrowser } from "@/lib/supabase/client";
 import { Button, Field, Badge } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { ROLES } from "@/lib/domain";
-import { deleteStaff, switchToGoogle } from "./actions";
+import { deleteStaff, setSarabanRole, switchToGoogle } from "./actions";
+import { ROLE_LABEL, type SarabanRole } from "@/lib/saraban/types";
 
 const PREFIXES = ["นาย", "นาง", "นางสาว", "ว่าที่ร้อยตรี", "ดร."];
 const POSITIONS = ["ผู้อำนวยการ", "รองผู้อำนวยการ", "ครู", "ครูผู้ช่วย", "พนักงานราชการ", "ครูอัตราจ้าง", "ครูพี่เลี้ยง", "เจ้าหน้าที่ธุรการ", "บุคลากรอื่น"];
@@ -264,6 +265,41 @@ export function TeachingEditor({ staffId, items, terms, subjects, classrooms }: 
           <Button onClick={add} disabled={!term || !classroom || !subject}><Plus size={20} weight="bold" /> เพิ่ม</Button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** บทบาทในระบบสารบรรณ + กลุ่มงาน (ผู้ดูแลระบบ หรือ ผอ.) */
+export function SarabanRoleEditor({ staffId, role, workGroup, groups }: { staffId: string; role: SarabanRole; workGroup: string | null; groups: string[] }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [r, setR] = useState<SarabanRole>(role);
+  const [g, setG] = useState(workGroup ?? "");
+  const [busy, setBusy] = useState(false);
+  const dirty = r !== role || g.trim() !== (workGroup ?? "");
+
+  async function save() {
+    setBusy(true);
+    const res = await setSarabanRole(staffId, r, g);
+    setBusy(false);
+    if (!res.ok) return toast(res.error, "error");
+    toast("บันทึกบทบาทสารบรรณแล้ว");
+    router.refresh();
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Field label="บทบาท" htmlFor="saraban-role">
+        <select id="saraban-role" className="field-input" value={r} onChange={(e) => setR(e.target.value as SarabanRole)}>
+          {(Object.keys(ROLE_LABEL) as SarabanRole[]).map((k) => <option key={k} value={k}>{ROLE_LABEL[k]}</option>)}
+        </select>
+      </Field>
+      <Field label="กลุ่มงาน" htmlFor="saraban-group" required={r === "head"}
+        hint={r === "head" ? "หัวหน้ามอบหนังสือต่อได้เฉพาะครูในกลุ่มงานเดียวกัน" : "เช่น วิชาการ งบประมาณ บุคคล บริหารทั่วไป"}>
+        <input id="saraban-group" className="field-input" list="saraban-groups" maxLength={100} value={g} onChange={(e) => setG(e.target.value)} />
+        <datalist id="saraban-groups">{groups.map((x) => <option key={x} value={x} />)}</datalist>
+      </Field>
+      <div><Button onClick={save} disabled={busy || !dirty}><Check size={20} /> {busy ? "กำลังบันทึก…" : "บันทึก"}</Button></div>
     </div>
   );
 }

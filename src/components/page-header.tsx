@@ -14,6 +14,7 @@ export const MODULE_COLORS = {
   reports: "#7C3AED",
   system: "#334155",
   manual: "#DB2777",
+  saraban: "#B91C1C",
 } as const;
 
 /** หัวหน้าจอสีประจำโมดูล พร้อมปุ่มย้อนกลับและปุ่ม ? */

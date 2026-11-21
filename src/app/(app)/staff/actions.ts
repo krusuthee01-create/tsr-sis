@@ -77,3 +77,27 @@ export async function deleteStaff(staffId: string): Promise<Result> {
   revalidatePath("/staff");
   return { ok: true };
 }
+
+const SARABAN_ROLES = ["director", "clerk", "head", "teacher"] as const;
+
+/**
+ * กำหนดบทบาทสารบรรณและกลุ่มงานของครู — ผู้ดูแลระบบ หรือ ผอ. ในระบบสารบรรณ
+ * ตาราง staff เขียนได้เฉพาะผู้ดูแลระบบตาม RLS จึงตรวจสิทธิ์ที่นี่แล้วเขียนด้วย service role
+ */
+export async function setSarabanRole(staffId: string, role: string, workGroup: string | null): Promise<Result> {
+  const profile = await getProfile();
+  const allowed = can(profile, "admin") || (!!profile?.approved && !!profile.active && profile.saraban_role === "director");
+  if (!allowed) return { ok: false, error: "เฉพาะผู้ดูแลระบบหรือผู้อำนวยการเท่านั้น" };
+  if (!(SARABAN_ROLES as readonly string[]).includes(role)) return { ok: false, error: "บทบาทไม่ถูกต้อง" };
+  const group = workGroup?.trim().slice(0, 100) || null;
+  if (role === "head" && !group) return { ok: false, error: "หัวหน้ากลุ่มงานต้องระบุกลุ่มงาน" };
+
+  const { data, error } = await supabaseAdmin().from("staff").update({ saraban_role: role, work_group: group }).eq("id", staffId).select("id");
+  if (error) {
+    console.error("setSarabanRole", error);
+    return { ok: false, error: "บันทึกบทบาทสารบรรณไม่สำเร็จ" };
+  }
+  if (!data?.length) return { ok: false, error: "ไม่พบครูท่านนี้" };
+  revalidatePath(`/staff/${staffId}`);
+  return { ok: true };
+}
