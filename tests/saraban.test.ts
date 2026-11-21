@@ -10,7 +10,7 @@ import { formatReminderBody } from "../src/lib/saraban/push-text.ts";
 import { embedPng, endorsementLines, pngSizePt, receiveStampLines } from "../src/lib/saraban/stamp.ts";
 import { PDFDocument } from "pdf-lib";
 import { formatLineMessage, pushLineGroup } from "../src/lib/saraban/line.ts";
-import { isIsoDate, receiveStampBox, validateRegister } from "../src/lib/saraban/register.ts";
+import { isIsoDate, parseRegisterInput, receiveStampBox, validateRegister } from "../src/lib/saraban/register.ts";
 
 const b64urlJson = (s: string) => JSON.parse(Buffer.from(s, "base64url").toString("utf8"));
 
@@ -209,4 +209,19 @@ test("receiveStampBox: มุมขวาบนของหน้าแรก �
   assert.equal(b.height, 48);
   assert.equal(b.x, 18);
   assert.equal(b.y, 300 - 48 - 18);
+});
+
+test("parseRegisterInput: ตรวจชนิดข้อมูลจริง ไม่ throw", () => {
+  const ok = { docNo: "1", docDate: "", fromOrg: "ก", toText: undefined, subject: "ข", urgency: 2, secret: false, dueDate: null };
+  const r = parseRegisterInput(ok);
+  assert.ok(r.ok);
+  if (r.ok) assert.deepEqual([r.input.toText, r.input.dueDate, r.input.receiveNo], ["", "", null]);
+  for (const bad of [null, "x", 5, { ...ok, subject: 5 }, { ...ok, fromOrg: {} }, { ...ok, secret: "true" }, { ...ok, urgency: "1" },
+    { ...ok, urgency: 4 }, { ...ok, urgency: 1.5 }, { ...ok, receiveNo: "3" }, { ...ok, receiveNo: 0 }, { ...ok, docDate: [] }]) {
+    const x = parseRegisterInput(bad);
+    assert.equal(x.ok, false, JSON.stringify(bad));
+    if (!x.ok) assert.ok(x.error.length > 0);
+  }
+  const n = parseRegisterInput({ ...ok, receiveNo: 7 });
+  assert.ok(n.ok && n.input.receiveNo === 7);
 });

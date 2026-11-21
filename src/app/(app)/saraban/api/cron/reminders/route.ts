@@ -14,7 +14,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const { data, error } = await supabaseAdmin().rpc("saraban_due_reminders");
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("saraban_due_reminders", error);
+    return NextResponse.json({ error: "อ่านรายการแจ้งเตือนไม่สำเร็จ" }, { status: 500 });
+  }
 
   const byStaff = new Map<string, Due[]>();
   for (const r of (data ?? []) as Due[]) byStaff.set(r.staff_id, [...(byStaff.get(r.staff_id) ?? []), r]);

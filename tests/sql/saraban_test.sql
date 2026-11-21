@@ -380,3 +380,24 @@ do $$ begin
   assert public.my_profile() ->> 'saraban_role' = 'teacher';
   assert public.my_profile() -> 'work_group' = 'null'::jsonb;
 end $$;
+
+-- saraban_set_role: สิทธิ์ ตรวจค่า และต้องมีผู้อำนวยการอย่างน้อย 1 คน
+select pg_temp.as_user(pg_temp.uid(5));
+select pg_temp.expect_error($q$select public.saraban_set_role(pg_temp.uid(6)::text::uuid, 'clerk', null)$q$, 'เฉพาะผู้ดูแลระบบ%');
+select pg_temp.as_super();
+select pg_temp.as_user(pg_temp.uid(1));
+select pg_temp.expect_error($q$select public.saraban_set_role((select id from public.staff where email = 'teacher2@example.com'), 'boss', null)$q$, 'บทบาทไม่ถูกต้อง');
+select pg_temp.expect_error($q$select public.saraban_set_role((select id from public.staff where email = 'teacher2@example.com'), 'head', '  ')$q$, 'หัวหน้ากลุ่มงานต้องระบุ%');
+select pg_temp.expect_error($q$select public.saraban_set_role((select id from public.staff where email = 'director@example.com'), 'teacher', null)$q$, 'ต้องมีผู้อำนวยการ%');
+select pg_temp.expect_error($q$select public.saraban_set_role('00000000-0000-0000-0000-000000000000', 'clerk', null)$q$, 'ไม่พบครู%');
+select public.saraban_set_role((select id from public.staff where email = 'teacher2@example.com'), 'head', ' บุคคล ');
+select pg_temp.as_super();
+do $$ begin
+  assert (select saraban_role || '|' || work_group from public.staff where email = 'teacher2@example.com') = 'head|บุคคล';
+  assert exists (select 1 from public.audit_log where table_name = 'staff' and actor = pg_temp.uid(1)
+    and record_key = (select id::text from public.staff where email = 'teacher2@example.com')
+    and new_data ->> 'saraban_role' = 'head' and old_data ->> 'saraban_role' = 'teacher'), 'บันทึกประวัติพร้อมผู้ทำจริง';
+end $$;
+select pg_temp.as_user(pg_temp.uid(6));
+select pg_temp.expect_error($q$select public.saraban_set_role(pg_temp.uid(5)::text::uuid, 'clerk', null)$q$, 'เฉพาะผู้ดูแลระบบ%');
+select pg_temp.as_super();

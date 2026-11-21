@@ -618,6 +618,36 @@ language sql stable security definer set search_path = public as $$
   order by b.due_date, b.id, r.staff_id
 $$;
 
+-- กำหนดบทบาทสารบรรณและกลุ่มงาน (ผู้ดูแลระบบ หรือ ผอ. ในระบบสารบรรณ)
+-- security definer: ตาราง staff เขียนได้เฉพาะผู้ดูแลระบบตาม RLS — trigger ประวัติการแก้ไขบันทึกผู้ทำจริง (auth.uid())
+create or replace function public.saraban_set_role(p_staff uuid, p_role text, p_group text) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_group text := nullif(left(btrim(coalesce(p_group, '')), 100), '');
+  v_target staff;
+begin
+  if not (has_role('admin') or coalesce(saraban_role(), '') = 'director') then
+    raise exception 'เฉพาะผู้ดูแลระบบหรือผู้อำนวยการเท่านั้น';
+  end if;
+  if p_role is null or p_role not in ('director', 'clerk', 'head', 'teacher') then
+    raise exception 'บทบาทไม่ถูกต้อง';
+  end if;
+  if p_role = 'head' and v_group is null then
+    raise exception 'หัวหน้ากลุ่มงานต้องระบุกลุ่มงาน';
+  end if;
+  select * into v_target from staff where id = p_staff for update;
+  if not found or not v_target.approved or not v_target.active then
+    raise exception 'ไม่พบครูท่านนี้ หรือบัญชียังไม่เปิดใช้งาน';
+  end if;
+  -- ต้องมีผู้อำนวยการในระบบสารบรรณอย่างน้อย 1 คนเสมอ
+  if v_target.saraban_role = 'director' and p_role <> 'director' and not exists (
+    select 1 from staff s where s.id <> p_staff and s.saraban_role = 'director' and s.approved and s.active
+  ) then
+    raise exception 'ต้องมีผู้อำนวยการในระบบสารบรรณอย่างน้อย 1 คน กรุณากำหนดผู้อำนวยการคนใหม่ก่อน';
+  end if;
+  update staff set saraban_role = p_role, work_group = v_group where id = p_staff;
+end $$;
+
 -- ---------- 9) สิทธิ์ตาราง ----------
 grant select, insert, update, delete on public.saraban_books, public.saraban_files, public.saraban_actions,
   public.saraban_recipients, public.saraban_presets, public.saraban_counters, public.push_subscriptions

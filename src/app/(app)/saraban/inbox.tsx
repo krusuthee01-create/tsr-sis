@@ -92,7 +92,7 @@ function SearchBox({ q, filter }: { q: string; filter: InboxFilter }) {
       <input id="saraban-q" type="search" value={value} onChange={(e) => setValue(e.target.value)} maxLength={200}
         className="field-input pl-10 pr-12" placeholder="ค้นหาเลขรับ เลขที่หนังสือ เรื่อง หรือหน่วยงาน" enterKeyHint="search" />
       {pending ? (
-        <span className="absolute right-3.5 top-1/2 size-5 -translate-y-1/2 animate-spin rounded-full border-2 border-sky-200 border-t-navy-700" aria-label="กำลังค้นหา" />
+        <span className="absolute right-3.5 top-1/2 size-5 -translate-y-1/2 animate-spin rounded-full border-2 border-sky-200 border-t-navy-700" role="status"><span className="sr-only">กำลังค้นหา</span></span>
       ) : value ? (
         <button type="button" aria-label="ล้างคำค้น" onClick={() => setValue("")}
           className="absolute right-1 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100">
@@ -142,8 +142,8 @@ function BookList({ initial, q, filter, offset }: { initial: InboxRow[]; q: stri
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className={`flex items-center gap-1.5 ${b.unread ? "font-bold" : "font-semibold"}`}>
-                    {b.unread && <span className="size-2 shrink-0 rounded-full bg-sky-600" aria-label="ยังไม่อ่าน" />}
-                    {b.secret && <LockSimple size={18} weight="fill" className="shrink-0 text-red-700" aria-label="หนังสือลับ" />}
+                    {b.unread && <><span className="size-2 shrink-0 rounded-full bg-sky-600" aria-hidden /><span className="sr-only">ยังไม่อ่าน</span></>}
+                    {b.secret && <><LockSimple size={18} weight="fill" className="shrink-0 text-red-700" aria-hidden /><span className="sr-only">หนังสือลับ</span></>}
                     <span className="line-clamp-2">{b.subject}</span>
                   </span>
                   <span className={`block truncate text-sm text-muted ${b.unread ? "font-semibold" : ""}`}>

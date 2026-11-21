@@ -76,6 +76,7 @@ export function RegisterForm({ schoolName }: { schoolName: string }) {
   const [dupes, setDupes] = useState<DuplicateBook[]>([]);
   const [step, setStep] = useState<string | null>(null);
   const busy = step !== null;
+  const submitting = useRef(false); // กันกดซ้ำก่อน state อัปเดต
 
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => {
     setF((x) => ({ ...x, [k]: v }));
@@ -126,7 +127,16 @@ export function RegisterForm({ schoolName }: { schoolName: string }) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || submitting.current) return;
+    submitting.current = true;
+    try {
+      await doSubmit();
+    } finally {
+      submitting.current = false;
+    }
+  }
+
+  async function doSubmit() {
     const receiveNo = f.receiveNo.trim() ? Number(f.receiveNo) : null;
     const input: RegisterInput = {
       docNo: f.docNo, docDate: f.docDate, fromOrg: f.fromOrg, toText: f.toText, subject: f.subject,

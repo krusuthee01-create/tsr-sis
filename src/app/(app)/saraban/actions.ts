@@ -3,7 +3,7 @@
 import { supabaseAdmin, supabaseServer } from "@/lib/supabase/server";
 import { driveFolderId, getFileMeta } from "@/lib/saraban/drive";
 import { FILE_KINDS, MAX_UPLOAD_BYTES, type FileKind } from "@/lib/saraban/types";
-import { validateRegister, type RegisterInput } from "@/lib/saraban/register";
+import { parseRegisterInput, validateRegister, type RegisterInput } from "@/lib/saraban/register";
 import type { PostgrestError } from "@supabase/supabase-js";
 
 type FileResult = { ok: true; fileId: string } | { ok: false; error: string };
@@ -14,6 +14,7 @@ type FileResult = { ok: true; fileId: string } | { ok: false; error: string };
  * อยู่ในโฟลเดอร์สารบรรณ, เป็นของเล่มนี้, ชนิดตรง, ผู้อัปโหลดคือผู้ใช้คนนี้ — กันการส่ง driveFileId ของไฟล์อื่นมาแอบผูก
  */
 export async function finalizeUpload(bookId: string, kind: FileKind, driveFileId: string): Promise<FileResult> {
+  if (typeof bookId !== "string" || typeof driveFileId !== "string" || !driveFileId) return { ok: false, error: "ข้อมูลไฟล์ไม่ถูกต้อง" };
   if (!FILE_KINDS.includes(kind)) return { ok: false, error: "ชนิดไฟล์ไม่ถูกต้อง" };
   const sb = await supabaseServer();
   const [{ data: staffId }, { data: allowed }] = await Promise.all([
@@ -49,7 +50,10 @@ export async function finalizeUpload(bookId: string, kind: FileKind, driveFileId
     p_size: meta.size,
     p_actor: staffId,
   });
-  if (error || typeof fileId !== "string") return { ok: false, error: "บันทึกไฟล์ไม่สำเร็จ: " + (error?.message ?? "") };
+  if (error || typeof fileId !== "string") {
+    console.error("saraban_add_file", error);
+    return { ok: false, error: "บันทึกไฟล์ไม่สำเร็จ กรุณาลองใหม่" };
+  }
   return { ok: true, fileId };
 }
 
@@ -67,7 +71,11 @@ function thaiError(error: PostgrestError, fallback: string): string {
 }
 
 /** ลงรับหนังสือ (ผอ./ธุรการ) — RPC ตรวจสิทธิ์และออกเลขรับ */
-export async function registerBook(input: RegisterInput): Promise<RegisterResult> {
+export async function registerBook(raw: RegisterInput): Promise<RegisterResult> {
+  // ตรวจชนิดข้อมูลจริง (เรียก server action ตรงได้โดยไม่ผ่านฟอร์ม)
+  const parsed = parseRegisterInput(raw);
+  if (!parsed.ok) return parsed;
+  const input = parsed.input;
   const errors = validateRegister(input);
   const first = Object.values(errors)[0];
   if (first) return { ok: false, error: first };
@@ -97,7 +105,9 @@ export type DuplicateBook = { id: string; receive_no: number; subject: string; r
 
 /** หนังสือปีนี้ที่เลขที่หนังสือซ้ำ (ใช้เตือนใต้ช่องเลขที่หนังสือ) */
 export async function findDuplicates(docNo: string, fromOrg: string): Promise<DuplicateBook[]> {
-  if (!docNo.trim()) return [];
+  if (typeof docNo !== "string" || !docNo.trim()) return [];
+  if (fromOrg != null && typeof fromOrg !== "string") return [];
+  fromOrg = fromOrg ?? "";
   const sb = await supabaseServer();
   const { data, error } = await sb.rpc("saraban_find_duplicates", { p_doc_no: docNo.slice(0, 100), p_from_org: fromOrg.slice(0, 300) });
   if (error) {
@@ -109,6 +119,7 @@ export async function findDuplicates(docNo: string, fromOrg: string): Promise<Du
 
 /** รายชื่อหน่วยงานที่เคยส่งหนังสือ (เติมช่อง "จาก" อัตโนมัติ) */
 export async function orgSuggestions(q: string): Promise<string[]> {
+  if (typeof q !== "string") return [];
   const sb = await supabaseServer();
   const { data, error } = await sb.rpc("saraban_org_suggestions", { p_q: q.slice(0, 100) });
   if (error) {
@@ -126,6 +137,9 @@ export type InboxRow = {
 
 /** รายการหนังสือหน้าถัดไป (ปุ่ม "โหลดเพิ่ม") */
 export async function loadInbox(q: string, filter: "all" | "todo" | "unread", offset: number): Promise<{ ok: true; rows: InboxRow[] } | { ok: false; error: string }> {
+  if (typeof q !== "string" || !["all", "todo", "unread"].includes(filter) || typeof offset !== "number") {
+    return { ok: false, error: "ข้อมูลไม่ถูกต้อง" };
+  }
   const sb = await supabaseServer();
   const { data, error } = await sb.rpc("saraban_inbox", { p_q: q.slice(0, 200) || null, p_filter: filter, p_offset: Math.max(0, Math.floor(offset) || 0) });
   if (error) return { ok: false, error: thaiError(error, "โหลดรายการไม่สำเร็จ") };

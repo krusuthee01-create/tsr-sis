@@ -78,26 +78,22 @@ export async function deleteStaff(staffId: string): Promise<Result> {
   return { ok: true };
 }
 
-const SARABAN_ROLES = ["director", "clerk", "head", "teacher"] as const;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * กำหนดบทบาทสารบรรณและกลุ่มงานของครู — ผู้ดูแลระบบ หรือ ผอ. ในระบบสารบรรณ
- * ตาราง staff เขียนได้เฉพาะผู้ดูแลระบบตาม RLS จึงตรวจสิทธิ์ที่นี่แล้วเขียนด้วย service role
+ * ตรวจสิทธิ์และเขียนผ่าน RPC saraban_set_role (security definer) เพื่อให้ประวัติการแก้ไขบันทึกผู้ทำจริง
  */
-export async function setSarabanRole(staffId: string, role: string, workGroup: string | null): Promise<Result> {
-  const profile = await getProfile();
-  const allowed = can(profile, "admin") || (!!profile?.approved && !!profile.active && profile.saraban_role === "director");
-  if (!allowed) return { ok: false, error: "เฉพาะผู้ดูแลระบบหรือผู้อำนวยการเท่านั้น" };
-  if (!(SARABAN_ROLES as readonly string[]).includes(role)) return { ok: false, error: "บทบาทไม่ถูกต้อง" };
-  const group = workGroup?.trim().slice(0, 100) || null;
-  if (role === "head" && !group) return { ok: false, error: "หัวหน้ากลุ่มงานต้องระบุกลุ่มงาน" };
-
-  const { data, error } = await supabaseAdmin().from("staff").update({ saraban_role: role, work_group: group }).eq("id", staffId).select("id");
+export async function setSarabanRole(staffId: unknown, role: unknown, workGroup: unknown): Promise<Result> {
+  if (typeof staffId !== "string" || !UUID.test(staffId)) return { ok: false, error: "ไม่พบครูท่านนี้" };
+  if (typeof role !== "string") return { ok: false, error: "บทบาทไม่ถูกต้อง" };
+  if (workGroup != null && typeof workGroup !== "string") return { ok: false, error: "กลุ่มงานไม่ถูกต้อง" };
+  const sb = await supabaseServer();
+  const { error } = await sb.rpc("saraban_set_role", { p_staff: staffId, p_role: role, p_group: workGroup ?? null });
   if (error) {
-    console.error("setSarabanRole", error);
-    return { ok: false, error: "บันทึกบทบาทสารบรรณไม่สำเร็จ" };
+    console.error("saraban_set_role", error);
+    return { ok: false, error: error.code === "P0001" && error.message ? error.message : "บันทึกบทบาทสารบรรณไม่สำเร็จ" };
   }
-  if (!data?.length) return { ok: false, error: "ไม่พบครูท่านนี้" };
   revalidatePath(`/staff/${staffId}`);
   return { ok: true };
 }

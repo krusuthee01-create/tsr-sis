@@ -27,7 +27,7 @@ export default async function SarabanPage({ searchParams }: { searchParams: Prom
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader title="สารบรรณ" module="saraban" subtitle="หนังสือรับ"
-        actions={canRegister ? <LinkButton href="/saraban/new" variant="secondary" size="sm"><Plus size={20} weight="bold" /> ลงรับหนังสือ</LinkButton> : undefined} />
+        actions={canRegister ? <LinkButton href="/saraban/new" variant="secondary"><Plus size={20} weight="bold" /> ลงรับหนังสือ</LinkButton> : undefined} />
       <Inbox rows={rows} q={q} filter={filter} offset={offset}
         error={error ? "โหลดรายการหนังสือไม่สำเร็จ กรุณาลองใหม่" : null} />
     </div>

@@ -22,6 +22,32 @@ export function isIsoDate(s: string): boolean {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
 }
 
+/**
+ * แปลงข้อมูลที่ส่งมาเป็น RegisterInput โดยตรวจชนิดจริง (server action รับค่าอะไรก็ได้จากผู้เรียก)
+ * ช่องข้อความที่ไม่บังคับ: undefined/null = ว่าง
+ */
+export function parseRegisterInput(raw: unknown): { ok: true; input: RegisterInput } | { ok: false; error: string } {
+  const bad = { ok: false as const, error: "ข้อมูลไม่ถูกต้อง กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง" };
+  if (!raw || typeof raw !== "object") return bad;
+  const r = raw as Record<string, unknown>;
+  const text = (v: unknown): string | null => (v == null ? "" : typeof v === "string" ? v : null);
+  const docNo = text(r.docNo), docDate = text(r.docDate), fromOrg = text(r.fromOrg), toText = text(r.toText),
+    subject = text(r.subject), dueDate = text(r.dueDate);
+  if (docNo === null || docDate === null || fromOrg === null || toText === null || subject === null || dueDate === null) return bad;
+  if (typeof r.secret !== "boolean") return bad;
+  if (typeof r.urgency !== "number" || !Number.isInteger(r.urgency) || r.urgency < 0 || r.urgency > 3) {
+    return { ok: false, error: "ระดับความเร่งด่วนไม่ถูกต้อง" };
+  }
+  let receiveNo: number | null = null;
+  if (r.receiveNo != null) {
+    if (typeof r.receiveNo !== "number" || !Number.isInteger(r.receiveNo) || r.receiveNo < 1 || r.receiveNo > 999_999_999) {
+      return { ok: false, error: "เลขรับต้องเป็นจำนวนเต็มมากกว่า 0" };
+    }
+    receiveNo = r.receiveNo;
+  }
+  return { ok: true, input: { docNo, docDate, fromOrg, toText, subject, urgency: r.urgency, secret: r.secret, dueDate, receiveNo } };
+}
+
 const MAX_LEN = { docNo: 100, fromOrg: 300, toText: 300, subject: 1000 } as const;
 
 /** คืนข้อความผิดพลาดภาษาไทย (รายช่อง) — ว่างคือผ่าน */
