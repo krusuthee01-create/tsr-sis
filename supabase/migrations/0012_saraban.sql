@@ -53,12 +53,16 @@ create table if not exists public.saraban_actions (
   book_id uuid not null references public.saraban_books(id),
   actor uuid references public.staff(id),
   action text not null
-    check (action in ('register', 'propose', 'endorse', 'forward', 'close', 'read', 'renumber', 'delete')),
+    check (action in ('register', 'propose', 'endorse', 'forward', 'close', 'read', 'renumber', 'delete', 'upload')),
   note text,
   file_id uuid references public.saraban_files(id),
   targets uuid[] not null default '{}',
   created_at timestamptz not null default now()
 );
+-- ฐานข้อมูลที่สร้างตารางไว้ก่อนเพิ่ม 'upload'
+alter table public.saraban_actions drop constraint if exists saraban_actions_action_check;
+alter table public.saraban_actions add constraint saraban_actions_action_check
+  check (action in ('register', 'propose', 'endorse', 'forward', 'close', 'read', 'renumber', 'delete', 'upload'));
 
 create table if not exists public.saraban_recipients (
   book_id uuid not null references public.saraban_books(id),
@@ -328,6 +332,7 @@ begin
   insert into saraban_files (book_id, kind, version, drive_file_id, name, size_bytes, created_by)
   values (p_book, p_kind, v_version, p_drive_file_id, p_name, p_size, p_actor)
   returning id into v_id;
+  insert into saraban_actions (book_id, actor, action, note, file_id) values (p_book, p_actor, 'upload', p_kind, v_id);
   return v_id;
 end $$;
 
@@ -524,7 +529,8 @@ begin
   values (p_book, v_me, 'renumber', format('เปลี่ยนเลขรับจาก %s เป็น %s', v_book.receive_no, p_no));
 end $$;
 
--- รายการหนังสือ (security invoker: เห็นตาม RLS) 'all' | 'todo' (ถือหนังสือหรือยังไม่อ่าน) | 'unread'
+-- รายการหนังสือ (security invoker: เห็นตาม RLS) เรียง: ด่วนก่อน กำหนดใกล้ก่อน (ไม่มีกำหนดท้าย) เลขรับล่าสุดก่อน
+-- ตัวกรอง 'all' | 'todo' (ถือหนังสือหรือยังไม่อ่าน) | 'unread'
 -- คำค้นใช้ expression เดียวกับ saraban_books_search_idx (และ receive_no_idx) เพื่อให้ใช้ดัชนีได้
 create or replace function public.saraban_inbox(p_q text default null, p_filter text default 'all', p_offset int default 0)
 returns table(id uuid, year int, receive_no int, doc_no text, subject text, from_org text, urgency smallint,
@@ -555,7 +561,7 @@ begin
     and (v_filter = 'all'
       or (v_filter = 'unread' and r.staff_id is not null and r.read_at is null)
       or (v_filter = 'todo' and (b.current_holder = v_me or (r.staff_id is not null and r.read_at is null))))
-  order by b.urgency desc, b.received_at desc, b.year desc, b.receive_no desc
+  order by b.urgency desc, b.due_date asc nulls last, b.year desc, b.receive_no desc
   limit 50 offset greatest(coalesce(p_offset, 0), 0);
 end $$;
 

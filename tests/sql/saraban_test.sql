@@ -288,6 +288,19 @@ begin
   f2 := public.saraban_add_file(pg_temp.get('b1'), 'original', 'drive-r2', 'r1-2.pdf', 10, pg_temp.sid(2));
   assert (select version from public.saraban_files where id = f2) = 2, 'version เพิ่มทีละ 1';
   perform pg_temp.put('f1', f1::text);
+  assert (select count(*) from public.saraban_actions
+          where book_id = pg_temp.get('b1') and action = 'upload' and actor = pg_temp.sid(2) and note = 'original') = 2,
+    'บันทึกการอัปโหลดในประวัติ';
+  assert (select file_id from public.saraban_actions where book_id = pg_temp.get('b1') and action = 'upload' order by id desc limit 1) = f2;
+end $$;
+-- กันการ grant ซ้ำโดยไม่ตั้งใจ: authenticated ต้องเรียกสองฟังก์ชันนี้ไม่ได้
+select pg_temp.as_super();
+do $$ begin
+  assert not has_function_privilege('authenticated', 'public.saraban_add_file(uuid, text, text, text, bigint, uuid)', 'execute'), 'authenticated เรียก add_file ไม่ได้';
+  assert not has_function_privilege('authenticated', 'public.saraban_due_reminders()', 'execute'), 'authenticated เรียก due_reminders ไม่ได้';
+  assert not has_function_privilege('anon', 'public.saraban_add_file(uuid, text, text, text, bigint, uuid)', 'execute');
+  assert has_function_privilege('service_role', 'public.saraban_add_file(uuid, text, text, text, bigint, uuid)', 'execute');
+  assert has_function_privilege('service_role', 'public.saraban_due_reminders()', 'execute');
 end $$;
 select pg_temp.as_user(pg_temp.uid(2));
 select public.saraban_propose(pg_temp.get('b1'), 'แนบตรารับ', pg_temp.get('f1'));
@@ -318,6 +331,15 @@ do $$ begin
   assert (select count(*) from public.saraban_staff_options()) = 6;
 end $$;
 select pg_temp.expect_error($$select * from public.saraban_inbox(null, 'nope', 0)$$, '%ตัวกรอง%');
+-- ความเร่งด่วนเท่ากัน: กำหนดเสร็จใกล้ขึ้นก่อน ไม่มีกำหนดอยู่ท้าย
+do $$ begin
+  -- ลงรับสลับลำดับ เพื่อไม่ให้ผ่านเพราะเรียงตามเลขรับโดยบังเอิญ
+  perform pg_temp.reg('เรียงกำหนด หนึ่งวัน', jsonb_build_object('urgency', 2, 'due_date', public.today_th() + 1));
+  perform pg_temp.reg('เรียงกำหนด ไม่มีกำหนด', '{"urgency": 2}');
+  perform pg_temp.reg('เรียงกำหนด ห้าวัน', jsonb_build_object('urgency', 2, 'due_date', public.today_th() + 5));
+  assert (select array_agg(subject) from public.saraban_inbox('เรียงกำหนด', 'all', 0))
+    = array['เรียงกำหนด หนึ่งวัน', 'เรียงกำหนด ห้าวัน', 'เรียงกำหนด ไม่มีกำหนด'], 'เรียงตามกำหนดเสร็จ ไม่มีกำหนดอยู่ท้าย';
+end $$;
 
 -- ลบหนังสือ
 select pg_temp.as_user(pg_temp.uid(5));
