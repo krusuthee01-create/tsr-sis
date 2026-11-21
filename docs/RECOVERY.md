@@ -11,7 +11,7 @@
 | ข้อมูลในฐานข้อมูล (นักเรียน เช็กชื่อ โภชนาการ ดูแลช่วยเหลือ ผลการเรียน บัญชีผู้ใช้) | Supabase โปรเจกต์ `tsr-sis` | GitHub Actions "สำรองข้อมูลรายสัปดาห์" ทุกวันอาทิตย์ 02:23 น. เข้ารหัส เก็บ 90 วัน |
 | รูปเยี่ยมบ้าน | Supabase Storage bucket `home-visits` | Workflow เดียวกัน (เมื่อตั้ง secret SUPABASE_URL และ SUPABASE_SERVICE_ROLE_KEY) |
 | ข้อมูลสารบรรณ (ทะเบียนหนังสือรับ การเกษียน ผู้รับ) | ตาราง `saraban_*` ใน Supabase | อยู่ในไฟล์สำรองฐานข้อมูลรายสัปดาห์เดียวกัน |
-| PDF สารบรรณ | Shared Drive `eSaraban` ใน Google Workspace ของโรงเรียน (ไม่อยู่ใน Supabase) | Google เก็บให้ (ถังขยะ Shared Drive เก็บไฟล์ที่ลบ 30 วัน) · ระบบไม่ลบไฟล์เอง (ลบหนังสือ = ซ่อนในระบบ ไฟล์ยังอยู่) |
+| PDF สารบรรณ | Google Drive: โฟลเดอร์ `eSaraban - หนังสือรับ (ห้ามลบ)` ของบัญชีโรงเรียนที่เชื่อมต่อ หรือ Shared Drive `eSaraban` (ไม่อยู่ใน Supabase) | Google เก็บให้ (ถังขยะ Shared Drive เก็บไฟล์ที่ลบ 30 วัน) · ระบบไม่ลบไฟล์เอง (ลบหนังสือ = ซ่อนในระบบ ไฟล์ยังอยู่) |
 | ลายเซ็น (สารบรรณ) | Supabase Storage bucket `signatures` | Workflow เดียวกับรูปเยี่ยมบ้าน (`scripts/backup-storage.mjs`) |
 | เว็บไซต์ | Vercel โปรเจกต์ `tsr-sis` ทุกหน้าอยู่ใต้ `/sis` เปิดได้ที่ gotime.anubantep.ac.th/sis (ผ่าน Caddy ของระบบลงเวลา), sis.anubantep.ac.th/sis และ tsr-sis.vercel.app/sis | สร้างใหม่ได้จากโค้ดบน GitHub |
 | การตั้งค่า | Vercel (Environment Variables), Supabase (Authentication), Google Cloud (OAuth, service account สารบรรณ), LINE Developers, DNS (CNAME `sis`) | จดไว้ในหัวข้อ "ค่าที่ต้องตั้งเมื่อติดตั้งใหม่" |
@@ -42,7 +42,10 @@ gpg -d tsr-sis-2569-11-17-photos.tar.gz.gpg | tar -xz
 ```
 
 ## กู้คืน PDF สารบรรณ
-- ไฟล์ถูกลบใน Drive โดยไม่ตั้งใจ: Shared Drive `eSaraban` › **ถังขยะ** › กู้คืน (ภายใน 30 วัน) ระบบเปิดได้ตามเดิมเพราะรหัสไฟล์ไม่เปลี่ยน
+- ไฟล์ถูกลบใน Drive โดยไม่ตั้งใจ: **ถังขยะ** ของบัญชีที่เชื่อมต่อ (หรือของ Shared Drive `eSaraban`) › กู้คืน (ภายใน 30 วัน) ระบบเปิดได้ตามเดิมเพราะรหัสไฟล์ไม่เปลี่ยน
+- แบบบัญชีโรงเรียน (OAuth): ระบบขึ้นว่า "การเชื่อมต่อ Google Drive หมดอายุหรือถูกยกเลิก" → ผู้ดูแลระบบ/ผอ. › สารบรรณ › ตั้งค่า › **เชื่อมต่อใหม่** ด้วย**บัญชีเดิม** (ไฟล์เป็นของบัญชีนั้น)
+  Client secret รั่ว: Google Cloud › Google Auth Platform › Clients › saraban › เพิ่ม secret ใหม่ ใส่ `GOOGLE_OAUTH_CLIENT_SECRET` ใน Vercel › Redeploy แล้วลบ secret เก่า
+  refresh token อยู่ในตาราง `saraban_drive_config` (อ่านได้เฉพาะ service role) และอยู่ในไฟล์สำรองฐานข้อมูลที่เข้ารหัสแล้ว — ถ้าสงสัยว่ารั่ว ให้บัญชีนั้นยกเลิกสิทธิ์แอปที่ myaccount.google.com › ความปลอดภัย แล้วกดเชื่อมต่อใหม่
 - service account ถูกลบ/คีย์รั่ว: สร้างคีย์ใหม่ (docs/SETUP.md หัวข้อ 6.2) ใส่ `GOOGLE_SA_PRIVATE_KEY` ใหม่ใน Vercel แล้ว Redeploy และลบคีย์เก่าใน Google Cloud
   ถ้าสร้าง service account ใหม่ ต้องเพิ่มอีเมลใหม่เป็นผู้จัดการเนื้อหาของ Shared Drive ด้วย
 - ย้าย Shared Drive/โฟลเดอร์ใหม่: ไฟล์เดิมต้องอยู่ใน Shared Drive ที่ service account เข้าถึงได้ (ระบบเปิดไฟล์ด้วยรหัสไฟล์ ไม่ใช่ชื่อโฟลเดอร์) แก้ `SARABAN_DRIVE_FOLDER_ID` เฉพาะไฟล์ที่อัปโหลดใหม่
@@ -56,7 +59,7 @@ gpg -d tsr-sis-2569-11-17-photos.tar.gz.gpg | tar -xz
 | Supabase › Authentication › URL Configuration | Site URL และ Redirect URLs ตาม docs/SETUP.md หัวข้อ 2.2 (ทุกที่อยู่ต้องลงท้าย `/sis/...`) |
 | Supabase › Authentication › Providers › Google | Client ID / Secret จาก Google Cloud |
 | Google Cloud › OAuth Client | Authorized redirect URI = `https://<project>.supabase.co/auth/v1/callback` |
-| Vercel › Environment Variables (สารบรรณ) | `GOOGLE_SA_EMAIL`, `GOOGLE_SA_PRIVATE_KEY`, `SARABAN_DRIVE_FOLDER_ID`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_GROUP_ID`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `CRON_SECRET`, `NEXT_PUBLIC_SITE_URL` (docs/SETUP.md หัวข้อ 6) — VAPID ใช้คู่เดิม ไม่อย่างนั้นทุกคนต้องเปิดการแจ้งเตือนใหม่ |
+| Vercel › Environment Variables (สารบรรณ) | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` (หรือ `GOOGLE_SA_EMAIL`, `GOOGLE_SA_PRIVATE_KEY`, `SARABAN_DRIVE_FOLDER_ID`), `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_GROUP_ID`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `CRON_SECRET`, `NEXT_PUBLIC_SITE_URL` (docs/SETUP.md หัวข้อ 6) — VAPID ใช้คู่เดิม ไม่อย่างนั้นทุกคนต้องเปิดการแจ้งเตือนใหม่ |
 | Shared Drive `eSaraban` | service account เป็นผู้จัดการเนื้อหา |
 | GitHub › Settings › Secrets › Actions | `SUPABASE_DB_URL`, `BACKUP_PASSPHRASE`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` (keepalive), `SUPABASE_SERVICE_ROLE_KEY` (สำรองรูปและลายเซ็น) |
 

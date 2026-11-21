@@ -7,7 +7,7 @@ import { withBase } from "@/lib/base-path";
 import { isUuid, parseNote, parseTargets, siteOrigin, PRESET_ROLES, type PresetRole } from "@/lib/saraban/book";
 import { formatLineMessage, pushLineGroup } from "@/lib/saraban/line";
 import { pushToStaff } from "@/lib/saraban/push";
-import { driveFolderId, getFileMeta } from "@/lib/saraban/drive";
+import { DriveSetupError, driveFolderId, getFileMeta } from "@/lib/saraban/drive";
 import { FILE_KINDS, MAX_UPLOAD_BYTES, type FileKind, type Urgency } from "@/lib/saraban/types";
 import { parseRegisterInput, validateRegister, type RegisterInput } from "@/lib/saraban/register";
 import type { PostgrestError } from "@supabase/supabase-js";
@@ -32,13 +32,16 @@ export async function finalizeUpload(bookId: string, kind: FileKind, driveFileId
   if (allowed !== true) return { ok: false, error: "ไม่มีสิทธิ์อัปโหลดไฟล์ของหนังสือนี้" };
 
   let meta;
+  let folderId: string;
   try {
+    folderId = await driveFolderId();
     meta = await getFileMeta(driveFileId);
-  } catch {
+  } catch (e) {
+    if (e instanceof DriveSetupError) return { ok: false, error: e.message };
     return { ok: false, error: "ไม่พบไฟล์ที่อัปโหลด กรุณาอัปโหลดใหม่" };
   }
   const p = meta.appProperties;
-  if (!meta.parents.includes(driveFolderId()) || p.bookId !== bookId || p.kind !== kind || p.uploader !== staffId) {
+  if (!meta.parents.includes(folderId) || p.bookId !== bookId || p.kind !== kind || p.uploader !== staffId) {
     return { ok: false, error: "ไฟล์ไม่ตรงกับหนังสือนี้ กรุณาอัปโหลดใหม่" };
   }
   if (meta.size <= 0 || meta.size > MAX_UPLOAD_BYTES) return { ok: false, error: "ขนาดไฟล์ไม่ถูกต้อง (ต้องไม่เกิน 30 MB)" };

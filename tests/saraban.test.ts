@@ -5,7 +5,10 @@ import { createVerify, generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildServiceJwt, createUploadSession, driveFolderId, getFileMeta, isFakeDrive, normalizePrivateKey } from "../src/lib/saraban/drive.ts";
+import {
+  buildConsentUrl, buildServiceJwt, clearDriveSetupCache, createUploadSession, driveFolderId, DriveSetupError, emailFromIdToken,
+  getAccessToken, getDriveSetup, getFileMeta, isFakeDrive, normalizePrivateKey, refreshTokenBody,
+} from "../src/lib/saraban/drive.ts";
 import { formatReminderBody } from "../src/lib/saraban/push-text.ts";
 import { embedPng, endorsementLines, pngSizePt, receiveStampLines } from "../src/lib/saraban/stamp.ts";
 import { PDFDocument } from "pdf-lib";
@@ -49,19 +52,20 @@ test("private key จาก env: ตัดเครื่องหมายค�
   assert.equal(buildServiceJwt("a@b.c", `"${escaped}"`, 1).split(".").length, 3);
 });
 
-test("Drive โหมดจำลอง: ปิดบน production ของ Vercel", () => {
+test("Drive โหมดจำลอง: ปิดบน production ของ Vercel", async () => {
   const saved = { dir: process.env.SARABAN_DRIVE_FAKE_DIR, env: process.env.VERCEL_ENV, folder: process.env.SARABAN_DRIVE_FOLDER_ID };
   try {
     delete process.env.SARABAN_DRIVE_FOLDER_ID;
     process.env.SARABAN_DRIVE_FAKE_DIR = "/tmp/x";
     delete process.env.VERCEL_ENV;
     assert.equal(isFakeDrive(), true);
-    assert.equal(driveFolderId(), "fake-folder");
+    assert.equal(await driveFolderId(), "fake-folder");
     process.env.VERCEL_ENV = "preview";
     assert.equal(isFakeDrive(), true);
     process.env.VERCEL_ENV = "production";
     assert.equal(isFakeDrive(), false);
-    assert.throws(() => driveFolderId(), /SARABAN_DRIVE_FOLDER_ID/);
+    clearDriveSetupCache();
+    await assert.rejects(driveFolderId(), (e: unknown) => e instanceof DriveSetupError && /ยังไม่ได้เชื่อมต่อ Google Drive/.test((e as Error).message));
     delete process.env.SARABAN_DRIVE_FAKE_DIR;
     delete process.env.VERCEL_ENV;
     assert.equal(isFakeDrive(), false);
@@ -70,6 +74,100 @@ test("Drive โหมดจำลอง: ปิดบน production ของ Ve
       if (v === undefined) delete process.env[k]; else process.env[k] = v;
     }
   }
+});
+
+// ---------- เชื่อมต่อด้วยบัญชี Google ของโรงเรียน (OAuth) ----------
+const DRIVE_ENV = ["SARABAN_DRIVE_FAKE_DIR", "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "GOOGLE_SA_EMAIL", "GOOGLE_SA_PRIVATE_KEY",
+  "SARABAN_DRIVE_FOLDER_ID", "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET"] as const;
+
+/** ตั้ง env และ fetch จำลองชั่วคราว แล้วคืนค่าเดิม */
+async function withDriveEnv(env: Partial<Record<(typeof DRIVE_ENV)[number], string>>, fetchImpl: typeof fetch, fn: () => Promise<void>) {
+  const saved = Object.fromEntries(DRIVE_ENV.map((k) => [k, process.env[k]]));
+  const savedFetch = globalThis.fetch;
+  for (const k of DRIVE_ENV) delete process.env[k];
+  Object.assign(process.env, env);
+  globalThis.fetch = fetchImpl;
+  clearDriveSetupCache();
+  try {
+    await fn();
+  } finally {
+    globalThis.fetch = savedFetch;
+    for (const k of DRIVE_ENV) if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+    clearDriveSetupCache();
+  }
+}
+
+test("Drive OAuth: หน้ายินยอมขอเฉพาะ drive.file แบบ offline + consent", () => {
+  const u = new URL(buildConsentUrl({ clientId: "cid", redirectUri: "https://gotime.anubantep.ac.th/sis/saraban/api/drive/callback", state: "s1" }));
+  assert.equal(u.origin + u.pathname, "https://accounts.google.com/o/oauth2/v2/auth");
+  assert.equal(u.searchParams.get("scope"), "openid email https://www.googleapis.com/auth/drive.file");
+  assert.equal(u.searchParams.get("access_type"), "offline");
+  assert.equal(u.searchParams.get("prompt"), "consent");
+  assert.equal(u.searchParams.get("state"), "s1");
+  assert.equal(u.searchParams.get("redirect_uri"), "https://gotime.anubantep.ac.th/sis/saraban/api/drive/callback");
+  assert.ok(!u.searchParams.get("scope")!.includes("auth/drive "), "ห้ามขอสิทธิ์ทั้งไดรฟ์");
+});
+
+test("Drive OAuth: อ่านอีเมลจาก id_token และ body ของ refresh token", () => {
+  const tok = ["x", Buffer.from(JSON.stringify({ email: "saraban@phrae1.go.th" })).toString("base64url"), "sig"].join(".");
+  assert.equal(emailFromIdToken(tok), "saraban@phrae1.go.th");
+  assert.equal(emailFromIdToken(undefined), null);
+  assert.equal(emailFromIdToken("bad"), null);
+  const b = refreshTokenBody("cid", "sec", "rt");
+  assert.equal(b.get("grant_type"), "refresh_token");
+  assert.equal(b.get("refresh_token"), "rt");
+});
+
+test("Drive: ใช้การเชื่อมต่อบัญชีโรงเรียนก่อน service account และขอ token ด้วย refresh token", async () => {
+  const calls: string[] = [];
+  const fakeFetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.includes("/rest/v1/saraban_drive_config")) {
+      assert.equal((init?.headers as Record<string, string>).apikey, "svc");
+      return Response.json([{ refresh_token: "rt-1", folder_id: "folder-oauth", account_email: "a@phrae1.go.th" }]);
+    }
+    if (url === "https://oauth2.googleapis.com/token") {
+      const body = init?.body as URLSearchParams;
+      assert.equal(body.get("grant_type"), "refresh_token");
+      assert.equal(body.get("client_id"), "cid");
+      return Response.json({ access_token: "at-1", expires_in: 3600 });
+    }
+    throw new Error("unexpected " + url);
+  }) as typeof fetch;
+  await withDriveEnv(
+    { NEXT_PUBLIC_SUPABASE_URL: "http://sb", SUPABASE_SERVICE_ROLE_KEY: "svc", GOOGLE_OAUTH_CLIENT_ID: "cid", GOOGLE_OAUTH_CLIENT_SECRET: "sec",
+      GOOGLE_SA_EMAIL: "sa@x", GOOGLE_SA_PRIVATE_KEY: "k", SARABAN_DRIVE_FOLDER_ID: "folder-sa" },
+    fakeFetch,
+    async () => {
+      const setup = await getDriveSetup();
+      assert.equal(setup.mode, "oauth");
+      assert.equal(await driveFolderId(), "folder-oauth");
+      assert.equal(await getAccessToken(), "at-1");
+      assert.equal(await getAccessToken(), "at-1"); // cache
+      assert.equal(calls.filter((c) => c.includes("oauth2")).length, 1);
+    },
+  );
+});
+
+test("Drive: ไม่มีการเชื่อมต่อบัญชีโรงเรียน → ใช้ service account; refresh token ถูกยกเลิก → ข้อความภาษาไทย", async () => {
+  await withDriveEnv(
+    { NEXT_PUBLIC_SUPABASE_URL: "http://sb", SUPABASE_SERVICE_ROLE_KEY: "svc", GOOGLE_SA_EMAIL: "sa@x", GOOGLE_SA_PRIVATE_KEY: "k", SARABAN_DRIVE_FOLDER_ID: "folder-sa" },
+    (async () => Response.json([])) as typeof fetch,
+    async () => {
+      assert.deepEqual(await getDriveSetup(), { mode: "service", folderId: "folder-sa" });
+    },
+  );
+  await withDriveEnv(
+    { NEXT_PUBLIC_SUPABASE_URL: "http://sb", SUPABASE_SERVICE_ROLE_KEY: "svc", GOOGLE_OAUTH_CLIENT_ID: "cid", GOOGLE_OAUTH_CLIENT_SECRET: "sec" },
+    (async (input: string | URL | Request) =>
+      String(input).includes("/rest/v1/")
+        ? Response.json([{ refresh_token: "rt-x", folder_id: "f", account_email: null }])
+        : Response.json({ error: "invalid_grant" }, { status: 400 })) as typeof fetch,
+    async () => {
+      await assert.rejects(getAccessToken(), (e: unknown) => e instanceof DriveSetupError && /เชื่อมต่อ Google Drive/.test((e as Error).message));
+    },
+  );
 });
 
 test("Drive โหมดจำลอง: เปิด session แล้วอ่าน metadata", async () => {

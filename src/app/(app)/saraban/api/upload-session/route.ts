@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { createUploadSession } from "@/lib/saraban/drive";
+import { createUploadSession, DriveSetupError } from "@/lib/saraban/drive";
 import { FILE_KINDS, MAX_UPLOAD_BYTES, type FileKind } from "@/lib/saraban/types";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -43,6 +43,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ uploadUrl });
   } catch (e) {
     console.error("saraban upload-session", e);
+    // ยังไม่เชื่อมต่อ/การเชื่อมต่อหมดอายุ: ข้อความภาษาไทยบอกว่าต้องทำอะไร
+    if (e instanceof DriveSetupError) return NextResponse.json({ error: e.message }, { status: 503 });
     return NextResponse.json({ error: "เปิดการอัปโหลดไม่สำเร็จ กรุณาลองใหม่" }, { status: 502 });
   }
 }

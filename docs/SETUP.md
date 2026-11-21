@@ -120,11 +120,38 @@ pg_restore --clean --if-exists --no-owner -d "<SUPABASE_DB_URL>" backup.dump
 ห้ามนำค่าลับลง git, LINE, อีเมล หรือเอกสารนี้ — เก็บในตัวจัดการรหัสผ่านของผู้ดูแลระบบ
 
 ### 6.1 ฐานข้อมูล
-1. Supabase › **SQL Editor** › รัน `supabase/migrations/0012_saraban.sql` (หลังไฟล์ก่อนหน้าทั้งหมด) ได้ตาราง สิทธิ์ และ bucket `signatures` (ลายเซ็น)
+1. Supabase › **SQL Editor** › รัน `supabase/migrations/0012_saraban.sql` แล้ว `0013_saraban_drive_oauth.sql` (หลังไฟล์ก่อนหน้าทั้งหมด) ได้ตาราง สิทธิ์ และ bucket `signatures` (ลายเซ็น)
 2. ตรวจ: Supabase › **Storage** ต้องมี bucket `signatures` (Private)
 
-### 6.2 Shared Drive และ service account (เก็บไฟล์ PDF)
-service account ไม่มีพื้นที่ Drive ของตัวเอง จึงต้องเก็บใน Shared Drive เท่านั้น
+### 6.2 ที่เก็บไฟล์ PDF (Google Drive) — เลือกแบบใดแบบหนึ่ง
+| แบบ | เหมาะกับ | ไฟล์เป็นของ |
+|---|---|---|
+| **ก. บัญชี Google ของโรงเรียน** (แนะนำเมื่อสร้าง Shared Drive ไม่ได้ เช่นบัญชี @phrae1.go.th) | กดเชื่อมต่อครั้งเดียวในระบบ | บัญชีที่เชื่อมต่อ (ใช้พื้นที่ของบัญชีนั้น) |
+| ข. service account + Shared Drive | หน่วยงานที่สร้าง Shared Drive ได้ | Shared Drive |
+
+ถ้าตั้งทั้งสองแบบ ระบบใช้แบบ ก. ก่อน · **ห้ามใช้บัญชี Gmail ส่วนตัว** (เอกสารราชการต้องเป็นของหน่วยงาน และเก็บอย่างน้อย 10 ปี)
+
+#### ก. บัญชี Google ของโรงเรียน (OAuth)
+ระบบขอสิทธิ์ `drive.file` เท่านั้น: เห็นเฉพาะไฟล์ที่ระบบสร้างเอง ไม่เห็นไฟล์อื่นในไดรฟ์ของบัญชีนั้น
+1. https://console.cloud.google.com › โปรเจกต์ (เช่น `TSR-SIS`) › **APIs & Services › Library** › **Google Drive API** › **Enable**
+2. **Google Auth Platform › Branding** (หรือ OAuth consent screen): User type **External**, ชื่อแอป เช่น `ระบบสารบรรณ อนุบาลเทพสุนทรินทร์`, อีเมลติดต่อ
+3. **Google Auth Platform › Audience › Publish app** ให้เป็น **In production**
+   **สำคัญ:** ถ้าค้างอยู่ที่ Testing สิทธิ์ที่เชื่อมต่อจะหมดอายุใน 7 วัน (สิทธิ์ drive.file ไม่ต้องรอ Google ตรวจสอบแอป)
+4. **Google Auth Platform › Clients › Create client** › ชนิด **Web application** ชื่อ `saraban`
+   **Authorized redirect URIs** ใส่ (ตรงกับ `NEXT_PUBLIC_SITE_URL` ทุกตัวอักษร):
+   `https://gotime.anubantep.ac.th/sis/saraban/api/drive/callback`
+   › Create ได้ **Client ID** → `GOOGLE_OAUTH_CLIENT_ID` และ **Client secret** → `GOOGLE_OAUTH_CLIENT_SECRET` (ความลับ)
+5. ใส่สองค่านี้และ `NEXT_PUBLIC_SITE_URL` (ข้อ 6.4) ใน Vercel แล้ว **Redeploy**
+6. เข้าระบบด้วยบัญชีผู้ดูแลระบบหรือผู้อำนวยการ › **สารบรรณ › ตั้งค่า › เชื่อมต่อ Google Drive**
+   › เลือกบัญชีของโรงเรียนที่จะเป็นเจ้าของเอกสาร (แนะนำบัญชีกลางของงานธุรการ ไม่ใช่บัญชีส่วนตัวของครู) › อนุญาต
+   ระบบสร้างโฟลเดอร์ `eSaraban - หนังสือรับ (ห้ามลบ)` ในไดรฟ์ของบัญชีนั้นเอง
+7. ถ้าขึ้น **"Access blocked / แอปนี้ถูกบล็อก"** แปลว่าผู้ดูแล Workspace ของบัญชีนั้น (เช่น สพป.) จำกัดแอปภายนอก
+   ให้ผู้ดูแลเพิ่มแอปนี้: admin.google.com › Security › Access and data control › API controls › Manage third-party app access › Configure new app › ค้นด้วย Client ID › **Trusted**
+8. เปลี่ยนบัญชีภายหลังไม่ได้เมื่อมีไฟล์แล้ว (ไฟล์เก่าเป็นของบัญชีเดิม) — เชื่อมต่อใหม่ด้วยบัญชีเดิมได้เสมอ (เช่น เมื่อสิทธิ์หมดอายุหรือถูกยกเลิก)
+   **ห้ามลบโฟลเดอร์หรือยกเลิกสิทธิ์ของแอปในบัญชีนั้น** ไม่อย่างนั้นเปิดไฟล์ไม่ได้และลงรับไม่ได้จนกว่าจะเชื่อมต่อใหม่
+
+#### ข. service account + Shared Drive
+service account ไม่มีพื้นที่ Drive ของตัวเอง จึงต้องเก็บใน Shared Drive เท่านั้น (โฟลเดอร์ใน "ไดรฟ์ของฉัน" ใช้ไม่ได้)
 1. https://console.cloud.google.com › เลือกโปรเจกต์ (ใช้โปรเจกต์เดียวกับข้อ 2.1 หรือสร้างใหม่ เช่น `tsr-sis-saraban`)
 2. **APIs & Services › Library** › ค้นหา **Google Drive API** › **Enable**
 3. **IAM & Admin › Service Accounts › Create service account** ชื่อ `saraban` (ไม่ต้องให้ role ใด ๆ) › Done
@@ -132,11 +159,12 @@ service account ไม่มีพื้นที่ Drive ของตัวเ
 4. คลิก service account › แท็บ **Keys › Add key › Create new key › JSON** ได้ไฟล์ .json (ความลับ เก็บให้ดี ลบจากเครื่องเมื่อใส่ Vercel แล้ว)
    เปิดไฟล์ คัดลอกค่า `private_key` ทั้งก้อน (ขึ้นต้น `-----BEGIN PRIVATE KEY-----\n...`) → `GOOGLE_SA_PRIVATE_KEY`
    ใส่แบบบรรทัดเดียวที่มี `\n` ตามในไฟล์ได้เลย ระบบแปลง `\n` เป็นขึ้นบรรทัดใหม่ให้เอง
-5. https://drive.google.com ด้วยบัญชี Workspace ของโรงเรียน › **ไดรฟ์ที่แชร์ › ใหม่** ตั้งชื่อ `eSaraban`
+5. https://drive.google.com ด้วยบัญชี Workspace ของหน่วยงาน › **ไดรฟ์ที่แชร์ › ใหม่** ตั้งชื่อ `eSaraban`
 6. ในไดรฟ์ `eSaraban` › **จัดการสมาชิก** › เพิ่มอีเมล service account ในข้อ 3 สิทธิ์ **ผู้จัดการเนื้อหา (Content manager)** › ไม่ต้องส่งอีเมลแจ้ง
    (เพิ่มผู้ดูแลระบบอีกคนเป็น "ผู้จัดการ" ไว้ด้วย กันไดรฟ์ไม่มีเจ้าของเมื่อคนใดคนหนึ่งย้ายออก)
 7. สร้างโฟลเดอร์ เช่น `หนังสือรับ` ในไดรฟ์ `eSaraban` แล้วเปิดโฟลเดอร์นั้น
    ที่อยู่เว็บจะเป็น `https://drive.google.com/drive/folders/<รหัสโฟลเดอร์>` คัดลอกส่วน `<รหัสโฟลเดอร์>` → `SARABAN_DRIVE_FOLDER_ID`
+   ตรวจว่าแถบที่อยู่ด้านบนขึ้น **ไดรฟ์ที่แชร์ › eSaraban** (ถ้าขึ้น "ไดรฟ์ของฉัน" คือโฟลเดอร์ธรรมดา ใช้ไม่ได้)
 
 ### 6.3 LINE OA (แจ้งกลุ่มครูเมื่อ ผอ. สั่งการ)
 1. https://developers.line.biz/console › สร้าง Provider (ชื่อโรงเรียน) › **Create a Messaging API channel** (หรือเปิด Messaging API ให้ LINE OA ที่มีอยู่แล้วใน LINE Official Account Manager)
@@ -165,9 +193,11 @@ service account ไม่มีพื้นที่ Drive ของตัวเ
 ### 6.5 สรุปค่าที่ต้องตั้ง
 | ชื่อ | ค่า | ความลับ |
 |---|---|---|
-| `GOOGLE_SA_EMAIL` | อีเมล service account (6.2 ข้อ 3) | |
-| `GOOGLE_SA_PRIVATE_KEY` | `private_key` จากไฟล์ JSON (6.2 ข้อ 4) | ✔ |
-| `SARABAN_DRIVE_FOLDER_ID` | รหัสโฟลเดอร์ใน Shared Drive (6.2 ข้อ 7) | ✔ |
+| `GOOGLE_OAUTH_CLIENT_ID` | แบบ ก.: Client ID (6.2 ก. ข้อ 4) | |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | แบบ ก.: Client secret (6.2 ก. ข้อ 4) | ✔ |
+| `GOOGLE_SA_EMAIL` | แบบ ข.: อีเมล service account (6.2 ข. ข้อ 3) | |
+| `GOOGLE_SA_PRIVATE_KEY` | แบบ ข.: `private_key` จากไฟล์ JSON (6.2 ข. ข้อ 4) | ✔ |
+| `SARABAN_DRIVE_FOLDER_ID` | แบบ ข.: รหัสโฟลเดอร์ใน Shared Drive (6.2 ข. ข้อ 7) | ✔ |
 | `LINE_CHANNEL_ACCESS_TOKEN` | channel access token (6.3 ข้อ 3) | ✔ |
 | `LINE_GROUP_ID` | group ID ขึ้นต้น `C` (6.3 ข้อ 4) | ✔ |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | VAPID Public Key | |
@@ -183,7 +213,7 @@ service account ไม่มีพื้นที่ Drive ของตัวเ
    - ผู้อำนวยการ 1 คน, เจ้าหน้าที่ธุรการ, หัวหน้ากลุ่มงาน (ต้องระบุกลุ่มงาน เช่น วิชาการ งบประมาณ บุคคล บริหารทั่วไป)
    - ครูที่จะรับงานจากหัวหน้ากลุ่มงาน ให้ระบุกลุ่มงานเดียวกัน · ค่าเริ่มต้นของทุกคนคือ "ครู"
 2. ผอ. และธุรการ: สารบรรณ › ตั้งค่า › อัปโหลดลายเซ็น (PNG) และกด "เปิดการแจ้งเตือน" บนมือถือของตน
-3. ทดลองลงรับหนังสือทดสอบ 1 ฉบับ เกษียน และมอบหมาย ตรวจว่าไฟล์ขึ้นใน Shared Drive และข้อความเข้ากลุ่ม LINE
+3. ทดลองลงรับหนังสือทดสอบ 1 ฉบับ เกษียน และมอบหมาย ตรวจว่าไฟล์ขึ้นในโฟลเดอร์ของ Google Drive (6.2) และข้อความเข้ากลุ่ม LINE
 4. **ทดลองใช้ 2 สัปดาห์** กับธุรการ + ผอ. (ลงรับ เกษียน มอบหมาย) โดย**ใช้ระบบเดิมควบคู่** เมื่อไม่พบปัญหาจึงเปิดให้ครูทุกคนเปิดการแจ้งเตือนและใช้งาน
 
 ### 6.7 (ไม่บังคับ) ที่อยู่สั้น `/saraban`
