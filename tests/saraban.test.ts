@@ -626,3 +626,17 @@ test("ออกจากระบบ: ลบแคช PDF และหน้า 
     if (saved.navigator) Object.defineProperty(globalThis, "navigator", saved.navigator);
   }
 });
+
+test("LINE: ส่งเฉพาะหนังสือด่วนที่สุดเป็นค่าเริ่มต้น ปรับเกณฑ์ได้ด้วย env", async () => {
+  const { lineMinUrgency, shouldPostToLine } = await import("../src/lib/saraban/line.ts");
+  assert.equal(lineMinUrgency(undefined), 3);
+  assert.equal(lineMinUrgency(""), 3);
+  assert.equal(lineMinUrgency("x"), 3);
+  assert.equal(lineMinUrgency("5"), 3);
+  assert.equal(lineMinUrgency("0"), 0);
+  assert.equal(lineMinUrgency("2"), 2);
+  assert.equal(shouldPostToLine(true, 3, 3), true);
+  assert.equal(shouldPostToLine(true, 2, 3), false);
+  assert.equal(shouldPostToLine(true, 0, 0), true);
+  assert.equal(shouldPostToLine(false, 3, 0), false, "ปิดเรื่อง (line=false) ไม่ส่ง");
+});

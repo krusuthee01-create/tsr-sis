@@ -3,6 +3,22 @@ import { URGENCY_LABEL, type Urgency } from "./types.ts";
 
 const LINE_MAX = 5000;
 
+/**
+ * ส่ง LINE เฉพาะหนังสือที่ด่วนถึงระดับนี้ (ค่าเริ่มต้น 3 = ด่วนที่สุด)
+ * เหตุผล: LINE นับโควตาตามจำนวนสมาชิกกลุ่ม — 1 เล่มเข้ากลุ่มครู 35 คน = 35 ข้อความ
+ * ส่งทุกเล่มจะเกินแพ็กเกจฟรีในไม่กี่วัน เล่มอื่นแจ้งรายบุคคลทาง Web Push (ฟรี) แทน
+ * ปรับได้ด้วย env SARABAN_LINE_MIN_URGENCY = 0–3 (0 = ทุกเล่ม)
+ */
+export function lineMinUrgency(raw = process.env.SARABAN_LINE_MIN_URGENCY): Urgency {
+  const n = Number(raw);
+  return raw !== undefined && raw.trim() !== "" && Number.isInteger(n) && n >= 0 && n <= 3 ? (n as Urgency) : 3;
+}
+
+/** ควรแจ้งกลุ่ม LINE หรือไม่: RPC บอกว่าเป็นการสั่งการ (line) และความเร่งด่วนถึงเกณฑ์ */
+export function shouldPostToLine(line: boolean, urgency: number, min: Urgency = lineMinUrgency()): boolean {
+  return line && urgency >= min;
+}
+
 export type LineBook = {
   receiveNo: number;
   year: number;

@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import { supabaseAdmin, supabaseServer } from "@/lib/supabase/server";
 import { withBase } from "@/lib/base-path";
 import { isUuid, parseNote, parseTargets, siteOrigin, PRESET_ROLES, type PresetRole } from "@/lib/saraban/book";
-import { formatLineMessage, pushLineGroup } from "@/lib/saraban/line";
+import { formatLineMessage, pushLineGroup, shouldPostToLine } from "@/lib/saraban/line";
 import { pushToStaff } from "@/lib/saraban/push";
 import { DriveSetupError, driveFolderId, getFileMeta } from "@/lib/saraban/drive";
 import { FILE_KINDS, MAX_UPLOAD_BYTES, type FileKind, type Urgency } from "@/lib/saraban/types";
@@ -244,7 +244,8 @@ export async function endorseBook(
     notifyLater("endorse", async () => {
       const { book, names } = await notifyData(bookId, t);
       if (!book) return;
-      if (line) {
+      // LINE เฉพาะเล่มด่วนที่สุด (โควตานับตามจำนวนสมาชิกกลุ่ม) — ผู้รับทุกเล่มได้ Web Push ด้านล่างอยู่แล้ว
+      if (shouldPostToLine(line, book.urgency)) {
         try {
           // หนังสือลับ: ไม่ส่งเนื้อหาเข้าตัวจัดรูปแบบเลย (กันพลาดซ้ำสองชั้น)
           const s = book.secret;
