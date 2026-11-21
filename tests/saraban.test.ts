@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildServiceJwt, createUploadSession, getFileMeta } from "../src/lib/saraban/drive.ts";
+import { formatReminderBody } from "../src/lib/saraban/push-text.ts";
 import { formatLineMessage, pushLineGroup } from "../src/lib/saraban/line.ts";
 
 const b64urlJson = (s: string) => JSON.parse(Buffer.from(s, "base64url").toString("utf8"));
@@ -97,4 +98,12 @@ test("pushLineGroup: ไม่มี env คืน false", async () => {
     if (old[0] !== undefined) process.env.LINE_CHANNEL_ACCESS_TOKEN = old[0];
     if (old[1] !== undefined) process.env.LINE_GROUP_ID = old[1];
   }
+});
+
+test("formatReminderBody: ลับไม่เผยชื่อเรื่อง และใส่ … เมื่อมีหลายเรื่อง", () => {
+  const one = formatReminderBody([{ subject: "ความลับสุดยอด", secret: true }]);
+  assert.ok(!one.includes("ความลับสุดยอด") && one.includes("หนังสือลับ") && !one.includes("…"));
+  const many = formatReminderBody([{ subject: "ลับมาก", secret: true }, { subject: "ประชุม", secret: false }]);
+  assert.ok(!many.includes("ลับมาก") && many.includes("2 เรื่อง") && many.includes("…"));
+  assert.ok(formatReminderBody([{ subject: "ประชุม", secret: false }]).includes("ประชุม"));
 });

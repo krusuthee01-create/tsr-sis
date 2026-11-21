@@ -2,10 +2,11 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { pushToStaff } from "@/lib/saraban/push";
+import { formatReminderBody } from "@/lib/saraban/push-text";
 
 export const dynamic = "force-dynamic";
 
-type Due = { staff_id: string; book_id: string; subject: string; due_date: string };
+type Due = { staff_id: string; book_id: string; subject: string; due_date: string; secret: boolean };
 
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -22,7 +23,7 @@ export async function GET(req: Request) {
     [...byStaff].map(([staffId, items]) =>
       pushToStaff([staffId], {
         title: "หนังสือใกล้ครบกำหนด",
-        body: `${items.length} เรื่องรอดำเนินการ: ${items[0].subject}…`,
+        body: formatReminderBody(items),
         url: "/sis/saraban?f=todo",
       }),
     ),

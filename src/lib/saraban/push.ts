@@ -12,10 +12,11 @@ export async function pushToStaff(staffIds: string[], payload: PushPayload): Pro
   webpush.setVapidDetails(process.env.VAPID_SUBJECT || "mailto:admin@anubantep.ac.th", pub, priv);
 
   const sb = supabaseAdmin();
-  const { data } = await sb
+  const { data, error } = await sb
     .from("push_subscriptions")
     .select("endpoint,p256dh,auth")
     .in("staff_id", staffIds);
+  if (error) throw new Error(`อ่าน push_subscriptions ไม่ได้: ${error.message}`);
   const body = JSON.stringify(payload);
   const dead: string[] = [];
   await Promise.all(

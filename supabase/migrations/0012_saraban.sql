@@ -605,10 +605,11 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 -- ผู้รับที่ยังไม่อ่านหนังสือที่ใกล้/เลยกำหนด (เรียกจากงานแจ้งเตือนฝั่งเซิร์ฟเวอร์เท่านั้น: service_role)
-create or replace function public.saraban_due_reminders()
-returns table(staff_id uuid, book_id uuid, subject text, due_date date)
+drop function if exists public.saraban_due_reminders();
+create function public.saraban_due_reminders()
+returns table(staff_id uuid, book_id uuid, subject text, due_date date, secret boolean)
 language sql stable security definer set search_path = public as $$
-  select r.staff_id, b.id, b.subject, b.due_date
+  select r.staff_id, b.id, b.subject, b.due_date, b.secret
   from saraban_recipients r
   join saraban_books b on b.id = r.book_id
   join staff s on s.id = r.staff_id and s.active
