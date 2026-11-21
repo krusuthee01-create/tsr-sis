@@ -60,29 +60,33 @@ export function latestFile<T extends { kind: string; version: number }>(files: r
 export const A4 = { width: 595.28, height: 841.89 } as const;
 
 /**
- * ตำแหน่งคำเกษียน: มุมล่างขวาของหน้าแรก เว้นขอบ 18pt
- * ถ้าภาพสูงเกิน 40% ของหน้า (บังเนื้อหามากไป) ให้เพิ่มหน้า A4 ท้ายไฟล์แล้ววางมุมขวาบนของหน้าใหม่
+ * ตำแหน่งคำเกษียน (point จากมุมซ้ายล่าง) เว้นขอบ 18pt — ธุรการวางซ้ายล่าง ผอ. วางขวาล่างของหน้าแรก จึงไม่ทับกัน
+ * ถ้าภาพสูงเกิน 40% ของหน้าแรก (บังเนื้อหามากไป) หรือ newPage (หัวหน้ากลุ่มงาน) ให้เพิ่มหน้า A4 ท้ายไฟล์แล้ววางมุมบนด้านเดียวกัน
  * ภาพกว้าง/สูงเกินหน้าจะย่อลงตามสัดส่วน — pageCount = จำนวนหน้าเดิม (หน้าใหม่คือ index นี้)
  */
 export function endorsementPlacement(
   page: { width: number; height: number },
   png: { width: number; height: number },
   pageCount: number,
-  margin = 18,
+  opts: { side?: "left" | "right"; newPage?: boolean; margin?: number } = {},
 ): { appendPage: boolean; box: { page: number; x: number; y: number; width: number; height: number } } {
-  if (png.height > page.height * 0.4) {
+  const margin = opts.margin ?? 18;
+  const left = opts.side === "left";
+  if (opts.newPage || png.height > page.height * 0.4) {
     const k = Math.min(1, (A4.width - margin * 2) / png.width, (A4.height - margin * 2) / png.height);
     const width = png.width * k, height = png.height * k;
-    return { appendPage: true, box: { page: pageCount, x: A4.width - width - margin, y: A4.height - height - margin, width, height } };
+    const x = left ? margin : A4.width - width - margin;
+    return { appendPage: true, box: { page: pageCount, x, y: A4.height - height - margin, width, height } };
   }
   const k = Math.min(1, (page.width - margin * 2) / png.width);
   const width = png.width * k, height = png.height * k;
-  return { appendPage: false, box: { page: 0, x: page.width - width - margin, y: margin, width, height } };
+  const x = left ? margin : page.width - width - margin;
+  return { appendPage: false, box: { page: 0, x, y: margin, width, height } };
 }
 
 /**
- * ที่อยู่เว็บ (origin) สำหรับลิงก์ในข้อความ LINE: Origin ของคำขอ → X-Forwarded-Host → NEXT_PUBLIC_SITE_URL
- * คืน null ถ้าหาไม่ได้ (ตัด /sis และ / ท้ายของค่า env ออก)
+ * ที่อยู่เว็บ (origin) สำหรับลิงก์ในข้อความ LINE: NEXT_PUBLIC_SITE_URL ก่อน (ตัด /sis และ / ท้าย)
+ * ไม่ได้ตั้งค่าจึงใช้ Origin ของคำขอ → X-Forwarded-Host — คืน null ถ้าหาไม่ได้
  */
 export function siteOrigin(
   h: { origin?: string | null; forwardedHost?: string | null; forwardedProto?: string | null },
@@ -97,6 +101,8 @@ export function siteOrigin(
       return null;
     }
   };
+  const fromEnv = parse(envSite?.trim().replace(/\/+$/, "").replace(/\/sis$/, ""));
+  if (fromEnv) return fromEnv;
   const fromOrigin = parse(h.origin);
   if (fromOrigin) return fromOrigin;
   const host = h.forwardedHost?.split(",")[0].trim();
@@ -104,7 +110,16 @@ export function siteOrigin(
     const proto = h.forwardedProto?.split(",")[0].trim() === "http" ? "http" : "https";
     return `${proto}://${host}`;
   }
-  return parse(envSite?.replace(/\/+$/, "").replace(/\/sis$/, ""));
+  return null;
+}
+
+/**
+ * ข้อความผิดพลาดที่แสดงผู้ใช้ได้: เฉพาะข้อความภาษาไทยที่ระบบเขียนเอง
+ * ข้อความจากไลบรารี/Drive/Supabase (อังกฤษ) ไม่ส่งถึงผู้ใช้ ใช้ fallback แทน
+ */
+export function safeMessage(err: unknown, fallback: string): string {
+  const m = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  return m && /[\u0E00-\u0E7F]/.test(m) ? m.slice(0, 300) : fallback;
 }
 
 /** ตรวจรายการผู้รับจาก client: uuid ไม่ซ้ำ ไม่เกิน 200 คน — ผิดรูปคืน null */

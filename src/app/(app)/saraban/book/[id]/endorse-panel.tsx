@@ -11,7 +11,7 @@ import { todayISO } from "@/lib/thai-date";
 import { DEFAULT_PRESETS, latestFile, type BookDetail, type Preset, type PresetRole, type StaffOption } from "@/lib/saraban/book";
 import type { SarabanRole } from "@/lib/saraban/types";
 import { endorseBook, forwardBook, proposeBook } from "../../actions";
-import { EncryptedPdfError, signAndUpload } from "../../pdf-client";
+import { EncryptedPdfError, signAndUpload, signErrorText } from "../../pdf-client";
 
 export type Me = { id: string; role: SarabanRole; workGroup: string | null; name: string };
 
@@ -107,6 +107,51 @@ export function EndorsePanel(props: { detail: BookDetail; me: Me; staff: StaffOp
   return null;
 }
 
+type Signer = { signature: Blob | null | undefined; hasFile: boolean; sign: (note: string, position: string, place: { side: "left" | "right"; newPage?: boolean }) => Promise<string | null | false>; done: () => void };
+
+/**
+ * ลงนามคำเกษียนลงไฟล์ล่าสุด (ใช้ร่วมทุกบทบาท): คืน fileId ใหม่, null = ไม่ฝังลงไฟล์ (ไม่มีข้อความ/ไฟล์ หรือไฟล์ถูกล็อก), false = ล้มเหลว (แจ้งแล้ว)
+ * ไฟล์ที่ลงนามแล้วแต่บันทึกขั้นตอนไม่สำเร็จ: ลองใหม่ด้วยข้อความเดิมใช้ไฟล์นี้ ไม่ลงนามซ้ำ
+ */
+function useSigner(detail: BookDetail, me: Me): Signer {
+  const toast = useToast();
+  const [signature, setSignature] = useState<Blob | null | undefined>(undefined); // undefined = กำลังโหลด
+  const signed = useRef<{ note: string; fileId: string } | null>(null);
+  const latest = latestFile(detail.files);
+  const { book } = detail;
+
+  // ลายเซ็นของฉัน (ไม่มีก็ลงนามด้วยชื่อได้)
+  useEffect(() => {
+    let alive = true;
+    supabaseBrowser().storage.from("signatures").download(`${me.id}/signature.png`)
+      .then(({ data }) => alive && setSignature(data ?? null))
+      .catch(() => alive && setSignature(null));
+    return () => { alive = false; };
+  }, [me.id]);
+
+  async function sign(note: string, position: string, place: { side: "left" | "right"; newPage?: boolean }) {
+    const text = note.trim();
+    if (!text || !latest) return null;
+    if (signed.current?.note === text) return signed.current.fileId;
+    try {
+      const fileId = await signAndUpload(book.id, latest.id, {
+        note: text, signerName: me.name, position, date: todayISO(),
+        fileName: `เกษียน รับที่ ${book.receive_no}-${book.year}.pdf`,
+      }, signature ?? null, place);
+      signed.current = { note: text, fileId };
+      return fileId;
+    } catch (err) {
+      if (err instanceof EncryptedPdfError) {
+        toast("ไฟล์ PDF ถูกล็อก จึงบันทึกข้อความในระบบโดยไม่ฝังลงไฟล์", "info");
+        return null;
+      }
+      toast(`ลงนามลงไฟล์ไม่สำเร็จ (${signErrorText(err)}) กรุณาลองใหม่`, "error");
+      return false;
+    }
+  }
+  return { signature, hasFile: !!latest, sign, done: () => { signed.current = null; } };
+}
+
 type Route = { kind: "head"; id: string } | { kind: "teachers"; ids: string[] } | { kind: "close" };
 
 /** ผอ. เกษียน 4 แตะ: คำสั่ง → ผู้รับ → ลงนาม → ยืนยัน */
@@ -120,24 +165,13 @@ function DirectorPanel({ detail, me, staff, presets, schoolName }: { detail: Boo
   const [picked, setPicked] = useState<string[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [step, setStep] = useState<string | null>(null);
-  const [signature, setSignature] = useState<Blob | null | undefined>(undefined); // undefined = กำลังโหลด
   const running = useRef(false);
-  // ไฟล์ที่ลงนามแล้วแต่บันทึกเกษียนไม่สำเร็จ: ลองใหม่ด้วยข้อความเดิมใช้ไฟล์นี้ ไม่ลงนามซ้ำทับ
-  const signed = useRef<{ note: string; fileId: string } | null>(null);
+  const signer = useSigner(detail, me);
+  const signature = signer.signature;
 
   const heads = useMemo(() => staff.filter((s) => s.saraban_role === "head"), [staff]);
   const others = useMemo(() => staff.filter((s) => s.id !== me.id), [staff, me.id]);
   const nameOf = useMemo(() => new Map(staff.map((s) => [s.id, s.name])), [staff]);
-  const latest = latestFile(detail.files);
-
-  // ลายเซ็นของฉัน (ไม่มีก็ลงนามด้วยชื่อได้)
-  useEffect(() => {
-    let alive = true;
-    supabaseBrowser().storage.from("signatures").download(`${me.id}/signature.png`)
-      .then(({ data }) => alive && setSignature(data ?? null))
-      .catch(() => alive && setSignature(null));
-    return () => { alive = false; };
-  }, [me.id]);
 
   const routeText = !route ? "" : route.kind === "head"
     ? `มอบ ${nameOf.get(route.id) ?? "หัวหน้ากลุ่มงาน"}`
@@ -148,26 +182,11 @@ function DirectorPanel({ detail, me, staff, presets, schoolName }: { detail: Boo
     if (!route || running.current) return;
     running.current = true;
     try {
-      let fileId: string | null = null;
       const text = note.trim();
-      if (signed.current?.note === text) {
-        fileId = signed.current.fileId;
-      } else if (latest) {
-        try {
-          setStep("กำลังลงนามลงไฟล์…");
-          fileId = await signAndUpload(book.id, latest.id, {
-            note: text, signerName: me.name, position: `ผู้อำนวยการ${schoolName}`, date: todayISO(),
-            fileName: `เกษียน รับที่ ${book.receive_no}-${book.year}.pdf`,
-          }, signature ?? null);
-          signed.current = { note: text, fileId };
-        } catch (err) {
-          if (!(err instanceof EncryptedPdfError)) {
-            toast(`ลงนามลงไฟล์ไม่สำเร็จ (${err instanceof Error ? err.message : "ไม่ทราบสาเหตุ"}) กรุณาลองใหม่`, "error");
-            return;
-          }
-          toast("ไฟล์ PDF ถูกล็อก จึงบันทึกคำเกษียนในระบบโดยไม่ฝังลงไฟล์", "info");
-        }
-      }
+      setStep("กำลังลงนามลงไฟล์…");
+      // ผอ. วางมุมล่างขวา (คำเสนอของธุรการอยู่ล่างซ้าย)
+      const fileId = await signer.sign(text, `ผู้อำนวยการ${schoolName}`, { side: "right" });
+      if (fileId === false) return;
       setStep("กำลังบันทึกการเกษียน…");
       const targets = route.kind === "head" ? [route.id] : route.kind === "teachers" ? route.ids : [];
       const res = await endorseBook(book.id, route.kind === "head" ? "head" : route.kind, text, targets, fileId);
@@ -175,7 +194,7 @@ function DirectorPanel({ detail, me, staff, presets, schoolName }: { detail: Boo
         toast(res.error, "error");
         return;
       }
-      signed.current = null;
+      signer.done();
       setConfirmOpen(false);
       toast(route.kind === "close" ? "ลงนามแล้ว · ปิดเรื่อง" : "ลงนามแล้ว · แจ้งผู้รับแล้ว");
       router.refresh();
@@ -219,7 +238,7 @@ function DirectorPanel({ detail, me, staff, presets, schoolName }: { detail: Boo
           ยังไม่มีลายเซ็น จะลงนามด้วยชื่อ — <Link href="/saraban/settings" className="font-semibold underline">ตั้งค่าลายเซ็น</Link>
         </p>
       )}
-      {!latest && <p className="text-sm text-muted">หนังสือนี้ยังไม่มีไฟล์ คำเกษียนจะบันทึกในระบบเท่านั้น</p>}
+      {!signer.hasFile && <p className="text-sm text-muted">หนังสือนี้ยังไม่มีไฟล์ คำเกษียนจะบันทึกในระบบเท่านั้น</p>}
       {/* ปุ่มลงนามลอยเหนือแถบเมนูล่างบนมือถือ: แตะได้โดยไม่ต้องเลื่อนจอ */}
       <div className="sticky bottom-20 z-10 flex flex-col gap-1 md:bottom-4">
         <Button size="lg" className="w-full shadow-lg" disabled={!ready} onClick={() => setConfirmOpen(true)}>
@@ -254,20 +273,25 @@ function DirectorPanel({ detail, me, staff, presets, schoolName }: { detail: Boo
 }
 
 /** ธุรการ: คำเกษียนเสนอ ผอ. */
-function ClerkPanel({ detail, presets }: { detail: BookDetail; presets: Preset[] }) {
+function ClerkPanel({ detail, me, presets }: { detail: BookDetail; me: Me; presets: Preset[] }) {
   const router = useRouter();
   const toast = useToast();
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const running = useRef(false);
+  const signer = useSigner(detail, me);
 
   async function submit() {
     if (running.current) return;
     running.current = true;
     setBusy(true);
     try {
-      const res = await proposeBook(detail.book.id, note, null);
+      // คำเสนอของธุรการวางมุมล่างซ้ายของหน้าแรก (ผอ. ลงนามล่างขวา จึงไม่ทับกัน)
+      const fileId = await signer.sign(note, me.role === "director" ? "ผู้อำนวยการ" : "เจ้าหน้าที่ธุรการ", { side: "left" });
+      if (fileId === false) return;
+      const res = await proposeBook(detail.book.id, note, fileId);
       if (!res.ok) return toast(res.error, "error");
+      signer.done();
       toast("เสนอ ผอ. แล้ว");
       router.refresh();
     } finally {
@@ -296,6 +320,7 @@ function HeadPanel({ detail, me, staff, presets }: { detail: BookDetail; me: Me;
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const running = useRef(false);
+  const signer = useSigner(detail, me);
   const members = useMemo(() => staff.filter((s) => s.id !== me.id && !!me.workGroup && s.work_group === me.workGroup), [staff, me]);
 
   async function submit() {
@@ -303,8 +328,12 @@ function HeadPanel({ detail, me, staff, presets }: { detail: BookDetail; me: Me;
     running.current = true;
     setBusy(true);
     try {
-      const res = await forwardBook(detail.book.id, note, picked, null);
+      // ข้อความของหัวหน้าอยู่หน้า A4 ใหม่ท้ายไฟล์ (มุมบนซ้าย) ไม่ทับคำเกษียนในหน้าแรก
+      const fileId = await signer.sign(note, `หัวหน้ากลุ่มงาน${me.workGroup ?? ""}`, { side: "left", newPage: true });
+      if (fileId === false) return;
+      const res = await forwardBook(detail.book.id, note, picked, fileId);
       if (!res.ok) return toast(res.error, "error");
+      signer.done();
       toast(`มอบหมายแล้ว ${picked.length} คน`);
       router.refresh();
     } finally {

@@ -2,13 +2,18 @@
 import { withBase } from "@/lib/base-path";
 import { MAX_UPLOAD_BYTES } from "@/lib/saraban/types";
 import { receiveStampBox } from "@/lib/saraban/register";
-import { A4, endorsementPlacement } from "@/lib/saraban/book";
+import { A4, endorsementPlacement, safeMessage } from "@/lib/saraban/book";
 import { uploadPdf } from "./upload";
 
 export type Picked = { file: File; bytes: Uint8Array; pages: number; encrypted: boolean };
 export type StampInfo = { schoolName: string; receiveNo: number; year: number; receivedAt: string; bookId: string };
 
-const errText = (err: unknown) => (err instanceof Error ? err.message : "ไม่ทราบสาเหตุ");
+/** ข้อความแสดงผู้ใช้: เฉพาะข้อความภาษาไทยของระบบ ข้อความดิบจากไลบรารี/Drive บันทึกใน console เท่านั้น */
+function errText(err: unknown): string {
+  const msg = safeMessage(err, "ไม่ทราบสาเหตุ");
+  if (msg === "ไม่ทราบสาเหตุ") console.error("saraban pdf", err);
+  return msg;
+}
 
 /** ตรวจไฟล์ที่เลือก: เป็น PDF ไม่เกิน 30 MB และ pdf-lib เปิดได้ */
 export async function readPdf(file: File): Promise<Picked> {
@@ -78,13 +83,15 @@ export class EncryptedPdfError extends Error {
 
 /**
  * ลงนามคำเกษียนลง PDF รุ่นล่าสุด แล้วอัปโหลดเป็นฉบับ stamped — คืน fileId ใหม่
- * วางมุมล่างขวาของหน้าแรก (หรือหน้า A4 ใหม่ท้ายไฟล์เมื่อคำเกษียนยาว) — ผิดพลาด throw Error ข้อความภาษาไทย
+ * วางมุมล่างซ้าย (ธุรการ) / ขวา (ผอ.) ของหน้าแรก หรือหน้า A4 ใหม่ท้ายไฟล์ (คำเกษียนยาว หรือ newPage: หัวหน้ากลุ่มงาน)
+ * ผิดพลาด throw Error — แสดงผู้ใช้ผ่าน signErrorText
  */
 export async function signAndUpload(
   bookId: string,
   fileId: string,
   e: { note: string; signerName: string; position: string; date: string; fileName: string },
   signature: Blob | null,
+  place: { side: "left" | "right"; newPage?: boolean },
 ): Promise<string> {
   const [{ drawEndorsement }, { endorsementLines, pngSizePt, embedPng }, { PDFDocument }] = await Promise.all([
     import("@/lib/saraban/stamp-canvas"),
@@ -110,12 +117,15 @@ export async function signAndUpload(
   );
   bitmap?.close();
 
-  const place = endorsementPlacement(doc.getPage(0).getSize(), pngSizePt(png), doc.getPageCount());
+  const pos = endorsementPlacement(doc.getPage(0).getSize(), pngSizePt(png), doc.getPageCount(), place);
   let base: Uint8Array = bytes;
-  if (place.appendPage) {
+  if (pos.appendPage) {
     doc.addPage([A4.width, A4.height]);
     base = await doc.save();
   }
-  const signed = await embedPng(base, png, place.box);
+  const signed = await embedPng(base, png, pos.box);
   return uploadPdf(bookId, "stamped", e.fileName.slice(0, 200), new Blob([signed as BlobPart], { type: "application/pdf" }));
 }
+
+/** ข้อความผิดพลาดของการลงนามที่แสดงผู้ใช้ได้ */
+export const signErrorText = errText;

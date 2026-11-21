@@ -73,7 +73,8 @@ export function BookView({ detail, me, staff, presets, schoolName }: {
           ) : (
             <p className="rounded-xl bg-slate-50 px-3 py-6 text-center text-muted">ยังไม่มีไฟล์หนังสือ</p>
           )}
-          {isOffice && latest?.kind !== "stamped" && (
+          {/* แนบไฟล์อีกครั้งได้เฉพาะก่อนเกษียน (ระบบอนุญาตอัปโหลดฉบับประทับตราเฉพาะขั้นนี้) */}
+          {isOffice && latest?.kind !== "stamped" && (book.status === "registered" || book.status === "proposed") && (
             <Reattach stamp={{ schoolName, receiveNo: book.receive_no, year: book.year, receivedAt: book.received_at, bookId: book.id }} />
           )}
           {files.length > 1 && (

@@ -11,7 +11,7 @@ import { embedPng, endorsementLines, pngSizePt, receiveStampLines } from "../src
 import { PDFDocument } from "pdf-lib";
 import { formatLineMessage, pushLineGroup } from "../src/lib/saraban/line.ts";
 import { isIsoDate, parseRegisterInput, receiveStampBox, validateRegister } from "../src/lib/saraban/register.ts";
-import { A4, endorsementPlacement, isUuid, latestFile, parseNote, parseTargets, siteOrigin } from "../src/lib/saraban/book.ts";
+import { A4, endorsementPlacement, isUuid, latestFile, parseNote, parseTargets, safeMessage, siteOrigin } from "../src/lib/saraban/book.ts";
 
 const b64urlJson = (s: string) => JSON.parse(Buffer.from(s, "base64url").toString("utf8"));
 
@@ -259,13 +259,47 @@ test("endorsementPlacement: ภาพกว้างกว่าหน้าย�
   assert.equal(p.box.x, 18);
 });
 
-test("siteOrigin: Origin → X-Forwarded-Host → NEXT_PUBLIC_SITE_URL", () => {
-  assert.equal(siteOrigin({ origin: "https://gotime.example.th", forwardedHost: "x.vercel.app" }, "https://env.example"), "https://gotime.example.th");
+test("siteOrigin: NEXT_PUBLIC_SITE_URL ก่อน → Origin → X-Forwarded-Host", () => {
+  assert.equal(siteOrigin({ origin: "https://gotime.example.th", forwardedHost: "x.vercel.app" }, "https://sis.example.th/sis/"), "https://sis.example.th");
+  assert.equal(siteOrigin({ origin: "https://gotime.example.th" }, "  "), "https://gotime.example.th");
+  assert.equal(siteOrigin({ origin: "https://gotime.example.th" }, "not a url"), "https://gotime.example.th");
+  assert.equal(siteOrigin({ origin: "https://gotime.example.th", forwardedHost: "x.vercel.app" }), "https://gotime.example.th");
   assert.equal(siteOrigin({ origin: "null", forwardedHost: "sis.example.th", forwardedProto: "https" }), "https://sis.example.th");
   assert.equal(siteOrigin({ forwardedHost: "localhost:3000", forwardedProto: "http" }), "http://localhost:3000");
-  assert.equal(siteOrigin({ forwardedHost: "evil.com/path" }, "https://sis.example.th/sis/"), "https://sis.example.th");
+  assert.equal(siteOrigin({ forwardedHost: "evil.com/path" }), null);
   assert.equal(siteOrigin({ origin: "javascript:alert(1)" }), null);
   assert.equal(siteOrigin({}), null);
+});
+
+test("endorsementPlacement: ธุรการซ้ายล่าง ผอ. ขวาล่าง ไม่ทับกัน", () => {
+  const page = { width: 595, height: 842 };
+  const clerk = endorsementPlacement(page, { width: 220, height: 100 }, 1, { side: "left" }).box;
+  const dir = endorsementPlacement(page, { width: 220, height: 120 }, 1, { side: "right" }).box;
+  assert.deepEqual(clerk, { page: 0, x: 18, y: 18, width: 220, height: 100 });
+  assert.equal(dir.x, 595 - 220 - 18);
+  assert.ok(clerk.x + clerk.width <= dir.x, "สองกล่องต้องไม่ซ้อนกันแนวนอน");
+  // สูงเกิน 40% → หน้าใหม่ มุมบนซ้าย
+  const tall = endorsementPlacement({ width: 595, height: 400 }, { width: 200, height: 170 }, 2, { side: "left" });
+  assert.equal(tall.appendPage, true);
+  assert.equal(tall.box.page, 2);
+  assert.equal(tall.box.x, 18);
+  assert.ok(Math.abs(tall.box.y - (A4.height - 170 - 18)) < 1e-9);
+});
+
+test("endorsementPlacement: หัวหน้ากลุ่มงาน (newPage) เพิ่มหน้า A4 วางมุมบนซ้ายเสมอ", () => {
+  const p = endorsementPlacement({ width: 595, height: 842 }, { width: 200, height: 80 }, 3, { side: "left", newPage: true });
+  assert.equal(p.appendPage, true);
+  assert.equal(p.box.page, 3);
+  assert.equal(p.box.x, 18);
+  assert.ok(Math.abs(p.box.y - (A4.height - 80 - 18)) < 1e-9);
+});
+
+test("safeMessage: แสดงเฉพาะข้อความภาษาไทยของระบบ", () => {
+  assert.equal(safeMessage(new Error("ไฟล์ใหญ่เกิน 30 MB"), "x"), "ไฟล์ใหญ่เกิน 30 MB");
+  assert.equal(safeMessage(new Error("Failed to parse PDF document (line:1 col:2)"), "ไม่ทราบสาเหตุ"), "ไม่ทราบสาเหตุ");
+  assert.equal(safeMessage("The user does not have sufficient permissions for file", "fb"), "fb");
+  assert.equal(safeMessage(undefined, "fb"), "fb");
+  assert.equal(safeMessage({ message: "ภาษาไทย" }, "fb"), "fb");
 });
 
 test("ตรวจข้อมูลจาก client: uuid, ผู้รับ, ข้อความ", () => {
