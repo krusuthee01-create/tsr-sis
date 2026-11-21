@@ -2,7 +2,7 @@
 import { withBase } from "@/lib/base-path";
 import { MAX_UPLOAD_BYTES } from "@/lib/saraban/types";
 import { receiveStampBox } from "@/lib/saraban/register";
-import { A4, endorsementPlacement, safeMessage } from "@/lib/saraban/book";
+import { A4, endorsementPlacement, safeMessage, type PlaceBox } from "@/lib/saraban/book";
 import { uploadPdf } from "./upload";
 
 export type Picked = { file: File; bytes: Uint8Array; pages: number; encrypted: boolean };
@@ -81,19 +81,24 @@ export class EncryptedPdfError extends Error {
   }
 }
 
+/** คำเกษียนที่เตรียมแล้ว: ไฟล์ต้นทาง + ภาพคำเกษียน + ขนาดทุกหน้า (ไว้ให้ผู้ลงนามแตะเลือกตำแหน่ง) */
+export type PreparedEndorsement = {
+  bytes: Uint8Array;
+  png: Uint8Array;
+  png_pt: { width: number; height: number };
+  pages: { width: number; height: number }[];
+};
+
 /**
- * ลงนามคำเกษียนลง PDF รุ่นล่าสุด แล้วอัปโหลดเป็นฉบับ stamped — คืน fileId ใหม่
- * วางมุมล่างซ้าย (ธุรการ) / ขวา (ผอ.) ของหน้าแรก หรือหน้า A4 ใหม่ท้ายไฟล์ (คำเกษียนยาว หรือ newPage: หัวหน้ากลุ่มงาน)
- * ผิดพลาด throw Error — แสดงผู้ใช้ผ่าน signErrorText
+ * เตรียมลงนาม: โหลดไฟล์ล่าสุด วาดคำเกษียน (ข้อความ ลายเซ็น ชื่อ วันที่เลขไทย)
+ * ไฟล์ถูกล็อก throw EncryptedPdfError · ผิดพลาดอื่น throw Error (แสดงผู้ใช้ผ่าน signErrorText)
  */
-export async function signAndUpload(
-  bookId: string,
+export async function prepareEndorsement(
   fileId: string,
-  e: { note: string; signerName: string; position: string; date: string; fileName: string },
+  e: { note: string; signerName: string; date: string },
   signature: Blob | null,
-  place: { side: "left" | "right"; newPage?: boolean },
-): Promise<string> {
-  const [{ drawEndorsement }, { endorsementLines, pngSizePt, embedPng }, { PDFDocument }] = await Promise.all([
+): Promise<PreparedEndorsement> {
+  const [{ drawEndorsement }, { endorsementLines, pngSizePt }, { PDFDocument }] = await Promise.all([
     import("@/lib/saraban/stamp-canvas"),
     import("@/lib/saraban/stamp"),
     import("pdf-lib"),
@@ -111,20 +116,32 @@ export async function signAndUpload(
 
   let bitmap: ImageBitmap | undefined;
   if (signature) bitmap = await createImageBitmap(signature).catch(() => undefined);
-  const png = await drawEndorsement(
-    endorsementLines({ note: e.note, signerName: e.signerName, position: e.position, date: e.date }),
-    bitmap,
-  );
+  const png = await drawEndorsement(endorsementLines({ note: e.note, signerName: e.signerName, date: e.date }), bitmap);
   bitmap?.close();
+  return { bytes, png, png_pt: pngSizePt(png), pages: doc.getPages().map((p) => p.getSize()) };
+}
 
-  const pos = endorsementPlacement(doc.getPage(0).getSize(), pngSizePt(png), doc.getPageCount(), place);
-  let base: Uint8Array = bytes;
+/** ตำแหน่งเริ่มต้น (ก่อนผู้ลงนามแตะเลือก): มุมล่างซ้าย/ขวาของหน้าแรก หรือหน้า A4 ใหม่ท้ายไฟล์ */
+export function defaultPlacement(p: PreparedEndorsement, place: { side: "left" | "right"; newPage?: boolean }) {
+  return endorsementPlacement(p.pages[0], p.png_pt, p.pages.length, place);
+}
+
+/** ฝังคำเกษียนตามตำแหน่งที่เลือก (appendPage = เพิ่มหน้า A4 ท้ายไฟล์ก่อน) แล้วอัปโหลดเป็นฉบับ stamped — คืน fileId ใหม่ */
+export async function uploadEndorsement(
+  bookId: string,
+  p: PreparedEndorsement,
+  pos: { appendPage: boolean; box: PlaceBox },
+  fileName: string,
+): Promise<string> {
+  const [{ embedPng }, { PDFDocument }] = await Promise.all([import("@/lib/saraban/stamp"), import("pdf-lib")]);
+  let base: Uint8Array = p.bytes;
   if (pos.appendPage) {
+    const doc = await PDFDocument.load(p.bytes, { ignoreEncryption: true });
     doc.addPage([A4.width, A4.height]);
     base = await doc.save();
   }
-  const signed = await embedPng(base, png, pos.box);
-  return uploadPdf(bookId, "stamped", e.fileName.slice(0, 200), new Blob([signed as BlobPart], { type: "application/pdf" }));
+  const signed = await embedPng(base, p.png, pos.box);
+  return uploadPdf(bookId, "stamped", fileName.slice(0, 200), new Blob([signed as BlobPart], { type: "application/pdf" }));
 }
 
 /** ข้อความผิดพลาดของการลงนามที่แสดงผู้ใช้ได้ */

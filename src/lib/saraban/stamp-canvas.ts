@@ -1,6 +1,6 @@
 // วาดตรารับ/คำเกษียนด้วย canvas (เฉพาะเบราว์เซอร์) คืนค่าเป็น PNG พื้นหลังโปร่งใส
 import QRCode from "qrcode";
-import { STAMP_SCALE } from "./stamp.ts";
+import { ENDORSEMENT_FOOTER_LINES, STAMP_SCALE } from "./stamp.ts";
 
 const INK = "#1d4ed8";
 const FALLBACK_FONT = '"Sarabun", "TH Sarabun New", sans-serif';
@@ -94,8 +94,8 @@ export async function drawEndorsement(lines: string[], signature?: ImageBitmap):
   ctx.textBaseline = "middle";
   ctx.font = `${fs}px ${family}`;
 
-  // 3 บรรทัดท้ายคือชื่อ/ตำแหน่ง/วันที่ จัดกึ่งกลางใต้ลายเซ็น
-  const bodyCount = Math.max(0, lines.length - 3);
+  // บรรทัดท้ายคือชื่อ/วันที่ จัดกึ่งกลางใต้ลายเซ็น
+  const bodyCount = Math.max(0, lines.length - ENDORSEMENT_FOOTER_LINES);
   let y = pad;
   lines.forEach((l, i) => {
     if (i === bodyCount && signature) {

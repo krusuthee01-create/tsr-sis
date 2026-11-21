@@ -7,7 +7,7 @@ import { FilePdf, LockSimple, UploadSimple, WarningCircle, X } from "@phosphor-i
 import { Button, Card, Field, SectionTitle } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { formatThaiDate, todayISO } from "@/lib/thai-date";
-import { URGENCY_LABEL, type Urgency } from "@/lib/saraban/types";
+import { DOC_TYPE_LABEL, DOC_TYPES, URGENCY_LABEL, type DocType, type Urgency } from "@/lib/saraban/types";
 import { validateRegister, type RegisterInput } from "@/lib/saraban/register";
 import { findDuplicates, orgSuggestions, registerBook, type DuplicateBook } from "../actions";
 import { attachPdf, readPdf, type Picked } from "../pdf-client";
@@ -35,6 +35,7 @@ export function RegisterForm({ schoolName }: { schoolName: string }) {
   const [f, setF] = useState({
     docNo: "", docDate: "", fromOrg: "", toText: `ผู้อำนวยการ${schoolName}`, subject: "",
     urgency: 0 as Urgency, secret: false, dueDate: "", receiveNo: "",
+    docType: "external" as DocType, refText: "", detail: "",
   });
   const [errors, setErrors] = useState<Errors>({});
   const [orgs, setOrgs] = useState<string[]>([]);
@@ -106,6 +107,7 @@ export function RegisterForm({ schoolName }: { schoolName: string }) {
     const input: RegisterInput = {
       docNo: f.docNo, docDate: f.docDate, fromOrg: f.fromOrg, toText: f.toText, subject: f.subject,
       urgency: f.urgency, secret: f.secret, dueDate: f.dueDate, receiveNo,
+      docType: f.docType, refText: f.refText, detail: f.detail,
     };
     const errs: Errors = validateRegister(input);
     if (!picked) errs.file = "กรุณาแนบไฟล์หนังสือ (PDF)";
@@ -180,6 +182,11 @@ export function RegisterForm({ schoolName }: { schoolName: string }) {
 
       <Card className="flex flex-col gap-4">
         <SectionTitle>2. รายละเอียดหนังสือ</SectionTitle>
+        <Field label="ชนิดหนังสือ" htmlFor="docType">
+          <select id="docType" className="field-input" value={f.docType} onChange={(e) => set("docType", e.target.value as DocType)}>
+            {DOC_TYPES.map((t) => <option key={t} value={t}>{DOC_TYPE_LABEL[t]}</option>)}
+          </select>
+        </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Field label="เลขที่หนังสือ" htmlFor="docNo" error={errors.docNo} hint="เช่น ศธ 04147/ว 123">
@@ -212,6 +219,12 @@ export function RegisterForm({ schoolName }: { schoolName: string }) {
         </Field>
         <Field label="เรื่อง" htmlFor="subject" required error={errors.subject}>
           <textarea id="subject" className="field-input" rows={2} value={f.subject} maxLength={1000} aria-invalid={invalid("subject")} onChange={(e) => set("subject", e.target.value)} />
+        </Field>
+        <Field label="อ้างถึง (ถ้ามี)" htmlFor="refText" error={errors.refText}>
+          <input id="refText" className="field-input" value={f.refText} maxLength={500} aria-invalid={invalid("refText")} onChange={(e) => set("refText", e.target.value)} />
+        </Field>
+        <Field label="รายละเอียด / สาระสำคัญ (ถ้ามี)" htmlFor="detail" error={errors.detail}>
+          <textarea id="detail" className="field-input" rows={2} value={f.detail} maxLength={3000} aria-invalid={invalid("detail")} onChange={(e) => set("detail", e.target.value)} />
         </Field>
 
         <fieldset className="flex flex-col gap-1.5">

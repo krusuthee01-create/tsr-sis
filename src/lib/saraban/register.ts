@@ -1,4 +1,5 @@
 // ตรวจข้อมูลฟอร์มลงรับหนังสือ (ใช้ทั้งฝั่งเบราว์เซอร์ก่อนส่ง และใน server action ซ้ำอีกชั้น)
+import { DOC_TYPES, type DocType } from "./types.ts";
 
 export type RegisterInput = {
   docNo: string;
@@ -10,6 +11,9 @@ export type RegisterInput = {
   secret: boolean;
   dueDate: string; // YYYY-MM-DD หรือว่าง
   receiveNo?: number | null; // ว่าง = ให้ระบบออกเลขถัดไป
+  docType: DocType;
+  refText: string; // อ้างถึง
+  detail: string; // รายละเอียด/สาระสำคัญ
 };
 
 /** วันที่รูปแบบ YYYY-MM-DD ที่มีอยู่จริง (ปี ค.ศ. 1900–2600) */
@@ -32,8 +36,11 @@ export function parseRegisterInput(raw: unknown): { ok: true; input: RegisterInp
   const r = raw as Record<string, unknown>;
   const text = (v: unknown): string | null => (v == null ? "" : typeof v === "string" ? v : null);
   const docNo = text(r.docNo), docDate = text(r.docDate), fromOrg = text(r.fromOrg), toText = text(r.toText),
-    subject = text(r.subject), dueDate = text(r.dueDate);
+    subject = text(r.subject), dueDate = text(r.dueDate), refText = text(r.refText), detail = text(r.detail);
   if (docNo === null || docDate === null || fromOrg === null || toText === null || subject === null || dueDate === null) return bad;
+  if (refText === null || detail === null) return bad;
+  const docType = r.docType == null ? "external" : r.docType;
+  if (typeof docType !== "string" || !DOC_TYPES.includes(docType as DocType)) return { ok: false, error: "ชนิดหนังสือไม่ถูกต้อง" };
   if (typeof r.secret !== "boolean") return bad;
   if (typeof r.urgency !== "number" || !Number.isInteger(r.urgency) || r.urgency < 0 || r.urgency > 3) {
     return { ok: false, error: "ระดับความเร่งด่วนไม่ถูกต้อง" };
@@ -45,10 +52,13 @@ export function parseRegisterInput(raw: unknown): { ok: true; input: RegisterInp
     }
     receiveNo = r.receiveNo;
   }
-  return { ok: true, input: { docNo, docDate, fromOrg, toText, subject, urgency: r.urgency, secret: r.secret, dueDate, receiveNo } };
+  return {
+    ok: true,
+    input: { docNo, docDate, fromOrg, toText, subject, urgency: r.urgency, secret: r.secret, dueDate, receiveNo, docType: docType as DocType, refText, detail },
+  };
 }
 
-const MAX_LEN = { docNo: 100, fromOrg: 300, toText: 300, subject: 1000 } as const;
+const MAX_LEN = { docNo: 100, fromOrg: 300, toText: 300, subject: 1000, refText: 500, detail: 3000 } as const;
 
 /** คืนข้อความผิดพลาดภาษาไทย (รายช่อง) — ว่างคือผ่าน */
 export function validateRegister(input: RegisterInput): Partial<Record<keyof RegisterInput, string>> {

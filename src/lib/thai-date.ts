@@ -38,6 +38,11 @@ export function isWeekend(iso: string): boolean {
 }
 
 /** "22 ต.ค. 2569" หรือแบบเต็ม "22 ตุลาคม 2569" */
+/** แปลงเลขอารบิกเป็นเลขไทย (๐–๙) ใช้ในตรารับ/คำเกษียนบนเอกสารราชการ */
+export function thaiDigits(s: string | number): string {
+  return String(s).replace(/[0-9]/g, (d) => "๐๑๒๓๔๕๖๗๘๙"[Number(d)]);
+}
+
 export function formatThaiDate(iso: string | null | undefined, style: "short" | "long" | "weekday" = "short"): string {
   if (!iso) return "-";
   const { y, m, d } = parseISO(iso.slice(0, 10));

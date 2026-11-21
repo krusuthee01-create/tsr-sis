@@ -120,7 +120,7 @@ pg_restore --clean --if-exists --no-owner -d "<SUPABASE_DB_URL>" backup.dump
 ห้ามนำค่าลับลง git, LINE, อีเมล หรือเอกสารนี้ — เก็บในตัวจัดการรหัสผ่านของผู้ดูแลระบบ
 
 ### 6.1 ฐานข้อมูล
-1. Supabase › **SQL Editor** › รัน `supabase/migrations/0012_saraban.sql` แล้ว `0013_saraban_drive_oauth.sql` (หลังไฟล์ก่อนหน้าทั้งหมด) ได้ตาราง สิทธิ์ และ bucket `signatures` (ลายเซ็น)
+1. Supabase › **SQL Editor** › รัน `supabase/migrations/0012_saraban.sql`, `0013_saraban_drive_oauth.sql` แล้ว `0014_saraban_school_practice.sql` (หลังไฟล์ก่อนหน้าทั้งหมด) ได้ตาราง สิทธิ์ และ bucket `signatures` (ลายเซ็น)
 2. ตรวจ: Supabase › **Storage** ต้องมี bucket `signatures` (Private)
 
 ### 6.2 ที่เก็บไฟล์ PDF (Google Drive) — เลือกแบบใดแบบหนึ่ง

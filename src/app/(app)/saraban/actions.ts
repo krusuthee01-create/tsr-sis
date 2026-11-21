@@ -101,6 +101,9 @@ export async function registerBook(raw: RegisterInput): Promise<RegisterResult> 
       secret: !!input.secret,
       due_date: input.dueDate || null,
       receive_no: input.receiveNo ?? null,
+      doc_type: input.docType,
+      ref_text: input.refText.trim(),
+      detail: input.detail.trim(),
     },
   });
   if (error) return { ok: false, error: thaiError(error, "ลงรับไม่สำเร็จ กรุณาลองใหม่") };
@@ -223,23 +226,35 @@ export async function proposeBook(bookId: string, note: string, fileId: string |
 /** ผอ. เกษียน: มอบหัวหน้ากลุ่มงาน / มอบครูโดยตรง / ทราบ-จัดเก็บ */
 export async function endorseBook(
   bookId: string,
-  route: "head" | "teachers" | "close",
+  route: "head" | "teachers" | "close" | "return",
   note: string,
   targets: string[],
   fileId: string | null,
 ): Promise<ActionResult> {
   const n = parseNote(note);
   const t = parseTargets(targets ?? []);
-  if (!isUuid(bookId) || n === null || t === null || !["head", "teachers", "close"].includes(route)) return BAD_INPUT;
+  if (!isUuid(bookId) || n === null || t === null || !["head", "teachers", "close", "return"].includes(route)) return BAD_INPUT;
   if (fileId != null && !isUuid(fileId)) return BAD_INPUT;
   const sb = await supabaseServer();
   const { data, error } = await sb.rpc("saraban_endorse", {
-    p_book: bookId, p_route: route, p_note: n || null, p_targets: route === "close" ? [] : t, p_file: fileId ?? null,
+    p_book: bookId, p_route: route, p_note: n || null, p_targets: route === "close" || route === "return" ? [] : t, p_file: fileId ?? null,
   });
   if (error) return { ok: false, error: thaiError(error, "เกษียนหนังสือไม่สำเร็จ กรุณาลองใหม่") };
 
   const line = (data as { line?: boolean } | null)?.line === true;
-  if (route !== "close") {
+  if (route === "return") {
+    // ส่งคืนธุรการ: แจ้งผู้ถือหนังสือคนใหม่ (ผู้เสนอ) ทาง Web Push
+    notifyLater("return", async () => {
+      const { data: b } = await supabaseAdmin().from("saraban_books").select("current_holder, receive_no, subject, secret").eq("id", bookId).maybeSingle();
+      if (!b?.current_holder) return;
+      await pushToStaff([b.current_holder], {
+        title: "ผอ. ส่งคืนหนังสือ",
+        body: `รับที่ ${b.receive_no}: ${b.secret ? "หนังสือลับ" : b.subject} — ${n}`.slice(0, 200),
+        url: withBase(`/saraban/book/${bookId}`),
+      });
+    });
+  }
+  if (route !== "close" && route !== "return") {
     const url = await bookUrl(bookId);
     notifyLater("endorse", async () => {
       const { book, names } = await notifyData(bookId, t);

@@ -14,7 +14,7 @@ import { embedPng, endorsementLines, pngSizePt, receiveStampLines } from "../src
 import { PDFDocument } from "pdf-lib";
 import { formatLineMessage, pushLineGroup } from "../src/lib/saraban/line.ts";
 import { isIsoDate, parseRegisterInput, receiveStampBox, validateRegister } from "../src/lib/saraban/register.ts";
-import { A4, endorsementPlacement, isUuid, latestFile, parseNote, parseTargets, safeMessage, siteOrigin } from "../src/lib/saraban/book.ts";
+import { A4, endorsementPlacement, hasNoteLine, isUuid, placeAtTap, toggleNoteLine, latestFile, parseNote, parseTargets, safeMessage, siteOrigin } from "../src/lib/saraban/book.ts";
 
 const b64urlJson = (s: string) => JSON.parse(Buffer.from(s, "base64url").toString("utf8"));
 
@@ -250,28 +250,28 @@ test("formatReminderBody: ลับไม่เผยชื่อเรื่อ
   assert.ok(formatReminderBody([{ subject: "ประชุม", secret: false }]).includes("ประชุม"));
 });
 
-test("ตรารับ: 4 บรรทัด และเวลาเป็นเวลาไทย", () => {
+test("ตรารับ: 4 บรรทัด เลขไทย และเวลาเป็นเวลาไทย (มีวินาที)", () => {
   const l = receiveStampLines({ schoolName: "โรงเรียนทดสอบ", receiveNo: 12, year: 2570, receivedAt: "2027-03-05T02:30:00Z" });
   assert.equal(l.length, 4);
   assert.equal(l[0], "โรงเรียนทดสอบ");
-  assert.equal(l[1], "รับที่ 12/2570");
-  assert.equal(l[2], "วันที่ 5 มีนาคม 2570");
-  assert.equal(l[3], "เวลา 09.30 น.");
+  assert.equal(l[1], "รับที่ ๑๒");
+  assert.equal(l[2], "วันที่ ๕ มีนาคม ๒๕๗๐");
+  assert.equal(l[3], "เวลา ๐๙:๓๐:๐๐");
 });
 
-test("คำเกษียน: ตัดบรรทัดไม่เกิน maxChars และท้ายเป็นชื่อ/ตำแหน่ง/วันที่", () => {
+test("คำเกษียน: ตัดบรรทัดไม่เกิน maxChars และท้ายเป็นชื่อ/วันที่เลขไทย", () => {
   const note = Array.from({ length: 24 }, (_, i) => `คำที่${i}`).join(" ").padEnd(120, "ก");
   const l = endorsementLines({ note, signerName: "นายสมชาย ใจดี", position: "ผู้อำนวยการ", date: "2026-10-22" });
-  const body = l.slice(0, -3);
+  const body = l.slice(0, -2);
   assert.ok(body.length > 1);
   assert.ok(body.every((x) => [...x].length <= 48));
-  assert.deepEqual(l.slice(-3), ["(นายสมชาย ใจดี)", "ผู้อำนวยการ", "22 ต.ค. 2569"]);
+  assert.deepEqual(l.slice(-2), ["นายสมชาย ใจดี", "๒๒/๑๐/๒๕๖๙"]);
 });
 
 test("คำเกษียน: สตริงไทยยาวไม่มีช่องว่าง ไม่ขึ้นต้นด้วยสระ/วรรณยุกต์ลอย", () => {
   const note = "ผู้บริหารสถานศึกษาพิจารณาเห็นสมควรมอบหมายให้ครูผู้รับผิดชอบดำเนินการตามระเบียบที่เกี่ยวข้องโดยเร็วที่สุดเพื่อประโยชน์ของนักเรียน".repeat(2);
   const l = endorsementLines({ note, signerName: "ก", position: "ข", date: "2026-10-22" }, 20);
-  const body = l.slice(0, -3);
+  const body = l.slice(0, -2);
   assert.ok(body.length > 3);
   for (const x of body) {
     assert.ok([...x].length <= 20, x);
@@ -294,7 +294,7 @@ test("embedPng ฝัง PNG ลงหน้า PDF", async () => {
 test("คำเกษียน: ประโยคไทยไม่มีช่องว่างตัดตามขอบเขตคำ", () => {
   const note = "ขอเชิญคณะครูและบุคลากรทางการศึกษาทุกท่านเข้าร่วมประชุมเพื่อชี้แจงแนวทางการดำเนินงานตามนโยบายของสำนักงานเขตพื้นที่การศึกษา";
   const l = endorsementLines({ note, signerName: "ก", position: "ข", date: "2026-10-22" });
-  const body = l.slice(0, -3);
+  const body = l.slice(0, -2);
   assert.ok([...note].length > 48 && body.length >= 2);
   assert.equal(body.join(""), note);
   for (const x of body) {
@@ -331,7 +331,8 @@ test("isIsoDate: รับเฉพาะวันที่มีจริงร
 });
 
 test("validateRegister: ช่องบังคับ วันที่ ความด่วน และเลขรับ", () => {
-  const ok = { docNo: "ศธ 0001/1", docDate: "2026-11-20", fromOrg: "สพป.ตัวอย่าง", toText: "", subject: "ทดสอบ", urgency: 0, secret: false, dueDate: "" };
+  const ok = { docNo: "ศธ 0001/1", docDate: "2026-11-20", fromOrg: "สพป.ตัวอย่าง", toText: "", subject: "ทดสอบ", urgency: 0, secret: false, dueDate: "",
+    docType: "external" as const, refText: "", detail: "" };
   assert.deepEqual(validateRegister(ok), {});
   assert.deepEqual(validateRegister({ ...ok, receiveNo: 5 }), {});
   const bad = validateRegister({ ...ok, fromOrg: "  ", subject: "", docDate: "2026-02-30", dueDate: "x", urgency: 4, receiveNo: 0 });
@@ -354,15 +355,16 @@ test("parseRegisterInput: ตรวจชนิดข้อมูลจริง
   const ok = { docNo: "1", docDate: "", fromOrg: "ก", toText: undefined, subject: "ข", urgency: 2, secret: false, dueDate: null };
   const r = parseRegisterInput(ok);
   assert.ok(r.ok);
-  if (r.ok) assert.deepEqual([r.input.toText, r.input.dueDate, r.input.receiveNo], ["", "", null]);
+  if (r.ok) assert.deepEqual([r.input.toText, r.input.dueDate, r.input.receiveNo, r.input.docType, r.input.refText], ["", "", null, "external", ""]);
   for (const bad of [null, "x", 5, { ...ok, subject: 5 }, { ...ok, fromOrg: {} }, { ...ok, secret: "true" }, { ...ok, urgency: "1" },
-    { ...ok, urgency: 4 }, { ...ok, urgency: 1.5 }, { ...ok, receiveNo: "3" }, { ...ok, receiveNo: 0 }, { ...ok, docDate: [] }]) {
+    { ...ok, urgency: 4 }, { ...ok, urgency: 1.5 }, { ...ok, receiveNo: "3" }, { ...ok, receiveNo: 0 }, { ...ok, docDate: [] },
+    { ...ok, docType: "bogus" }, { ...ok, refText: 3 }, { ...ok, detail: {} }]) {
     const x = parseRegisterInput(bad);
     assert.equal(x.ok, false, JSON.stringify(bad));
     if (!x.ok) assert.ok(x.error.length > 0);
   }
-  const n = parseRegisterInput({ ...ok, receiveNo: 7 });
-  assert.ok(n.ok && n.input.receiveNo === 7);
+  const n = parseRegisterInput({ ...ok, receiveNo: 7, docType: "internal", refText: "ศธ 1/2", detail: "สาระ" });
+  assert.ok(n.ok && n.input.receiveNo === 7 && n.input.docType === "internal" && n.input.refText === "ศธ 1/2");
 });
 
 // ---------- หน้าหนังสือ (Task 7) ----------
@@ -639,4 +641,35 @@ test("LINE: ส่งเฉพาะหนังสือด่วนที่�
   assert.equal(shouldPostToLine(true, 2, 3), false);
   assert.equal(shouldPostToLine(true, 0, 0), true);
   assert.equal(shouldPostToLine(false, 3, 0), false, "ปิดเรื่อง (line=false) ไม่ส่ง");
+});
+
+test("placeAtTap: จุดที่แตะเป็นมุมซ้ายบน และไม่ล้นขอบหน้า", () => {
+  const page = { width: 600, height: 800 };
+  const png = { width: 200, height: 100 };
+  // แตะกลางหน้า → มุมซ้ายบนที่ (300, 400 จากบน) → y จากล่าง = 800 - 400 - 100
+  assert.deepEqual(placeAtTap({ fx: 0.5, fy: 0.5 }, page, png, 1), { page: 1, x: 300, y: 300, width: 200, height: 100 });
+  // แตะมุมขวาล่างสุด → ดันเข้ามาให้อยู่ในหน้า (ขอบ 6pt)
+  const br = placeAtTap({ fx: 1, fy: 1 }, page, png, 0);
+  assert.equal(br.x, 600 - 200 - 6);
+  assert.equal(br.y, 6);
+  // แตะนอกภาพ/ค่าแปลก → ยังอยู่ในหน้า
+  const tl = placeAtTap({ fx: -1, fy: Number.NaN }, page, png, 0);
+  assert.equal(tl.x, 6);
+  assert.equal(tl.y, 800 - 6 - 100);
+  // คำเกษียนกว้างกว่าหน้า → ย่อตามสัดส่วน
+  const small = placeAtTap({ fx: 0, fy: 0 }, { width: 112, height: 800 }, png, 0);
+  assert.equal(small.width, 100);
+  assert.equal(small.height, 50);
+});
+
+test("toggleNoteLine: แตะเพิ่มบรรทัด แตะซ้ำเอาออก รักษาบรรทัดที่พิมพ์เอง", () => {
+  let n = toggleNoteLine("", "ทราบ");
+  assert.equal(n, "- ทราบ");
+  n = toggleNoteLine(n, "แจ้งหนังสือเวียนให้ครูทุกคนทราบ");
+  assert.equal(n, "- ทราบ\n- แจ้งหนังสือเวียนให้ครูทุกคนทราบ");
+  assert.ok(hasNoteLine(n, "ทราบ"));
+  n = toggleNoteLine(n, "ทราบ");
+  assert.equal(n, "- แจ้งหนังสือเวียนให้ครูทุกคนทราบ");
+  assert.ok(!hasNoteLine(n, "ทราบ"));
+  assert.equal(toggleNoteLine("ข้อความเอง\n\n", "เรียน ผอ.", ""), "ข้อความเอง\nเรียน ผอ.");
 });
