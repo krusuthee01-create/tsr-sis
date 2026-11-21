@@ -3,8 +3,14 @@
 // - ไฟล์ static ของ Next.js: เก็บแคชถาวร (ชื่อไฟล์เปลี่ยนทุกครั้งที่ deploy)
 // - หน้าเว็บ: ดึงจากเครือข่ายก่อน ถ้าไม่มีสัญญาณใช้ฉบับที่เคยเปิดไว้
 // - ข้อมูลจาก Supabase ไม่ผ่านแคชนี้ (หน้าเช็กชื่อจัดการเองด้วย IndexedDB)
+// - PDF สารบรรณ (/sis/saraban/api/file/<id>): cache-first ในแคช tsr-saraban-files เปิดซ้ำ/ไม่มีสัญญาณก็อ่านได้
+//   ไฟล์แต่ละเวอร์ชันไม่เปลี่ยนเนื้อหา (id ใหม่ทุกครั้งที่ลงนาม) · เก็บไม่เกิน 200 ไฟล์ ลบที่เก่าสุดก่อน
+//   แคชนี้ไม่ผูกกับ VERSION จึงอยู่รอดเมื่อ deploy รุ่นใหม่ · ออกจากระบบแล้วหน้าเว็บลบทิ้ง (components/app-shell.tsx)
+// - API อื่นของสารบรรณ (/sis/saraban/api/*) ไม่แคช
 const BASE = "/sis";
-const VERSION = "tsr-v3";
+const VERSION = "tsr-v4";
+const SARABAN_FILES = "tsr-saraban-files";
+const SARABAN_FILES_MAX = 200;
 const STATIC = `${VERSION}-static`;
 const PAGES = `${VERSION}-pages`;
 const OFFLINE = `${BASE}/offline`;
@@ -24,7 +30,8 @@ self.addEventListener("activate", (event) => {
     caches.keys()
       // ลบเฉพาะแคชรุ่นเก่าของ TSR-SIS — แคชของระบบอื่นบน origin เดียวกัน (เช่น shell-* ของระบบลงเวลา) ห้ามแตะ
       // tsr-v1-* (รุ่นก่อน /sis) หน้าเว็บเป็นคนลบพร้อมถอน service worker เก่า (ดู components/service-worker.tsx)
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith("tsr-") && !k.startsWith(VERSION) && !k.startsWith("tsr-v1")).map((k) => caches.delete(k))))
+      // tsr-saraban-files ไม่ผูกกับรุ่น — เก็บไว้ข้ามการ deploy
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith("tsr-") && !k.startsWith(VERSION) && !k.startsWith("tsr-v1") && k !== SARABAN_FILES).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -37,6 +44,14 @@ self.addEventListener("fetch", (event) => {
   if (!inBase(url.pathname)) return;
   const path = url.pathname.slice(BASE.length) || "/";
   if (path.startsWith("/auth/") || path === "/login") return;
+
+  // PDF สารบรรณ: cache-first (รวมกรณีเปิดใน iframe ซึ่งเป็นคำขอแบบ navigate)
+  if (path.startsWith("/saraban/api/file/")) {
+    event.respondWith(sarabanFile(event));
+    return;
+  }
+  // API อื่นของสารบรรณ (อัปโหลด, cron, ไฟล์จำลอง) ไม่แคช
+  if (path.startsWith("/saraban/api/")) return;
 
   if (path.startsWith("/_next/static/") || path.startsWith("/icons/")) {
     event.respondWith(
@@ -67,6 +82,35 @@ self.addEventListener("fetch", (event) => {
       }),
   );
 });
+
+/**
+ * PDF สารบรรณ: มีในแคชตอบทันที ไม่มีจึงดึงจากเครือข่ายแล้วเก็บ (เฉพาะ 200 — 404 ไม่มีสิทธิ์/502 ห้ามเก็บ)
+ * ใส่ใหม่ = ต่อท้ายลำดับคีย์ของ Cache API จึงลบจากหัวรายการ = ลบเก่าสุดก่อน
+ * ตอบจากแคชแล้วย้ายไปท้าย (ใช้ล่าสุด) — งานเก็บแคชไม่หน่วงคำตอบ แต่อยู่ใน waitUntil กัน service worker ถูกปิดกลางคัน
+ */
+async function sarabanFile(event) {
+  const req = event.request;
+  const cache = await caches.open(SARABAN_FILES);
+  const key = req.url;
+  const hit = await cache.match(key);
+  if (hit) {
+    const again = hit.clone(); // clone ก่อนส่งคืน (body ของ hit จะถูกอ่านโดยหน้าเว็บ)
+    event.waitUntil(cache.delete(key).then(() => cache.put(key, again)).catch(() => {}));
+    return hit;
+  }
+  const res = await fetch(req);
+  if (res.status === 200 && !res.redirected) {
+    const copy = res.clone();
+    event.waitUntil(cache.put(key, copy).then(() => trimCache(cache, SARABAN_FILES_MAX)).catch(() => {}));
+  }
+  return res;
+}
+
+/** เก็บไม่เกิน max รายการ: ลบจากหัวรายการ (เก่าสุด/ใช้นานที่สุด) */
+async function trimCache(cache, max) {
+  const keys = await cache.keys();
+  for (let i = 0; i < keys.length - max; i++) await cache.delete(keys[i]);
+}
 
 // ---------- Web Push (แจ้งเตือนสารบรรณ) ----------
 // payload: {"title": "...", "body": "...", "url": "/sis/saraban/book/<id>"}

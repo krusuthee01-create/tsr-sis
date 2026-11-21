@@ -348,3 +348,75 @@ test("service worker: push แสดงแจ้งเตือน และก�
   assert.equal(await click("https://evil.test/sis/x"), "https://gotime.test/sis/saraban");
   assert.equal(await click("/start"), "https://gotime.test/sis/saraban");
 });
+
+test("service worker: PDF สารบรรณ cache-first (เก็บไม่เกิน 200 ลบเก่าสุดก่อน) และ API อื่นของสารบรรณไม่แคช", async () => {
+  const { readFileSync } = await import("node:fs");
+  const vm = await import("node:vm");
+  const handlers: Record<string, (e: unknown) => void> = {};
+  // Cache API จำลอง: คีย์เรียงตามลำดับที่ใส่ (เหมือนของจริง)
+  const stores = new Map<string, Map<string, Response>>();
+  const open = async (name: string) => {
+    if (!stores.has(name)) stores.set(name, new Map());
+    const m = stores.get(name)!;
+    return {
+      match: async (k: string) => m.get(k)?.clone(),
+      put: async (k: string, r: Response) => { m.delete(k); m.set(k, r); },
+      delete: async (k: string) => m.delete(k),
+      keys: async () => [...m.keys()],
+      addAll: async () => {},
+    };
+  };
+  const fetched: string[] = [];
+  const status = (url: string) => (url.includes("/denied") ? 404 : 200);
+  const sandbox = {
+    self: { addEventListener: (t: string, fn: (e: unknown) => void) => { handlers[t] = fn; }, location: { origin: "https://gotime.test" } },
+    caches: { open, match: async () => undefined, keys: async () => [...stores.keys()], delete: async (k: string) => stores.delete(k) },
+    fetch: async (req: { url: string }) => { fetched.push(req.url); return new Response("pdf:" + req.url, { status: status(req.url) }); },
+    Response, URL, Promise,
+  };
+  vm.runInNewContext(readFileSync(new URL("../public/sw.js", import.meta.url), "utf8"), sandbox);
+  const get = async (path: string, mode = "cors") => {
+    let res = null as Promise<Response> | null;
+    const pending: Promise<unknown>[] = [];
+    handlers.fetch({ request: { method: "GET", url: "https://gotime.test" + path, mode, headers: { get: () => null } },
+      respondWith: (p: Promise<Response>) => { res = p; }, waitUntil: (p: Promise<unknown>) => { pending.push(p); } });
+    const r = res ? await res : null;
+    await Promise.all(pending); // งานเก็บแคช (put/trim) อยู่ใน waitUntil
+    return r;
+  };
+  const file = (n: number) => `/sis/saraban/api/file/00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+  // เปิดครั้งแรกจากเครือข่าย ครั้งที่สองจากแคช (iframe = navigate ก็ใช้กฎนี้)
+  assert.equal(await (await get(file(1), "navigate"))!.text(), "pdf:https://gotime.test" + file(1));
+  assert.equal(await (await get(file(1)))!.text(), "pdf:https://gotime.test" + file(1));
+  assert.equal(fetched.length, 1);
+  // 404 (ไม่มีสิทธิ์) ไม่เก็บ
+  assert.equal((await get("/sis/saraban/api/file/denied"))!.status, 404);
+  await get("/sis/saraban/api/file/denied");
+  assert.equal(fetched.filter((u) => u.endsWith("/denied")).length, 2);
+  // API อื่นของสารบรรณไม่ผ่าน service worker
+  for (const p of ["/sis/saraban/api/upload-session", "/sis/saraban/api/fake-drive/x", "/sis/saraban/api/cron/reminders"]) assert.equal(await get(p), null, p);
+  // หน้า /sis/saraban ยังใช้ network-first เดิม (respondWith ถูกเรียก)
+  assert.notEqual(await get("/sis/saraban", "navigate"), null);
+  assert.equal(stores.has("tsr-v4-pages"), true);
+
+  // เกิน 200: ลบเก่าสุดก่อน แต่ไฟล์ที่เพิ่งเปิดซ้ำ (file 1) ถูกย้ายไปท้ายจึงยังอยู่
+  for (let i = 2; i <= 201; i++) {
+    await get(file(i));
+    if (i === 100) await get(file(1));
+  }
+  const keys = [...stores.get("tsr-saraban-files")!.keys()];
+  assert.equal(keys.length, 200);
+  assert.equal(keys.includes("https://gotime.test" + file(1)), true);
+  assert.equal(keys.includes("https://gotime.test" + file(2)), false);
+  assert.equal(keys.at(-1), "https://gotime.test" + file(201));
+
+  // activate ของรุ่นใหม่ไม่ลบแคช PDF
+  let wait: Promise<unknown> = Promise.resolve();
+  (sandbox.self as Record<string, unknown>).clients = { claim: () => Promise.resolve() };
+  stores.set("tsr-v3-pages", new Map());
+  handlers.activate({ waitUntil: (p: Promise<unknown>) => { wait = p; } });
+  await wait;
+  assert.equal(stores.has("tsr-saraban-files"), true);
+  assert.equal(stores.has("tsr-v3-pages"), false);
+});

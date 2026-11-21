@@ -3,6 +3,7 @@ import { GearSix, Plus } from "@phosphor-icons/react/dist/ssr";
 import { getProfile, supabaseServer } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/page-header";
 import { LinkButton } from "@/components/ui";
+import { sarabanHelp } from "@/lib/help";
 import { Inbox, type InboxFilter } from "./inbox";
 import type { InboxRow } from "./actions";
 
@@ -27,7 +28,7 @@ export default async function SarabanPage({ searchParams }: { searchParams: Prom
 
   return (
     <div className="mx-auto max-w-5xl">
-      <PageHeader title="สารบรรณ" module="saraban" subtitle="หนังสือรับ"
+      <PageHeader title="สารบรรณ" module="saraban" subtitle="หนังสือรับ" help={sarabanHelp(role)}
         actions={<>
           {canRegister && <LinkButton href="/saraban/new" variant="secondary"><Plus size={20} weight="bold" /> ลงรับหนังสือ</LinkButton>}
           <Link href="/saraban/settings" aria-label="ตั้งค่าสารบรรณ" title="ตั้งค่าสารบรรณ"

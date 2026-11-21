@@ -12,7 +12,7 @@ export default async function NewBookPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader title="ลงรับหนังสือ" module="saraban" back="/saraban" subtitle="แนบไฟล์ PDF กรอกรายละเอียด แล้วระบบจะออกเลขรับและประทับตรารับให้" />
+      <PageHeader title="ลงรับหนังสือ" module="saraban" back="/saraban" help="saraban-clerk" subtitle="แนบไฟล์ PDF กรอกรายละเอียด แล้วระบบจะออกเลขรับและประทับตรารับให้" />
       {allowed ? (
         <RegisterForm schoolName={schoolName} />
       ) : (

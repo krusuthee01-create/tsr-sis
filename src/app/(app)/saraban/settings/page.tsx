@@ -16,7 +16,7 @@ export default async function SarabanSettingsPage() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
-      <PageHeader title="ตั้งค่าสารบรรณ" module="saraban" back="/saraban" subtitle="คำสั่งสำเร็จรูป ลายเซ็น และการแจ้งเตือน" />
+      <PageHeader title="ตั้งค่าสารบรรณ" module="saraban" back="/saraban" help="saraban-settings" subtitle="คำสั่งสำเร็จรูป ลายเซ็น และการแจ้งเตือน" />
       <PushToggle vapidKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""} />
       {profile && <SignatureForm staffId={profile.id} />}
       <PresetEditor initial={(data ?? []) as Preset[]} editable={role === "director" || role === "clerk"} />

@@ -2,6 +2,7 @@ import { getProfile, getSettings, supabaseServer } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState, LinkButton } from "@/components/ui";
 import { isUuid, type BookDetail, type Preset, type StaffOption } from "@/lib/saraban/book";
+import { sarabanHelp } from "@/lib/help";
 import { BookView } from "./book-view";
 
 export const metadata = { title: "หนังสือรับ" };
@@ -26,7 +27,7 @@ export default async function BookPage({ params }: { params: Promise<{ id: strin
   if (!detail?.book || !profile) {
     return (
       <div className="mx-auto max-w-3xl">
-        <PageHeader title="หนังสือรับ" module="saraban" back="/saraban" />
+        <PageHeader title="หนังสือรับ" module="saraban" back="/saraban" help={sarabanHelp(profile?.saraban_role)} />
         <EmptyState title="ไม่พบหนังสือ หรือคุณไม่มีสิทธิ์ดู" action={<LinkButton href="/saraban">กลับไปรายการหนังสือ</LinkButton>}>
           หนังสืออาจถูกลบ หรือยังไม่ได้มอบหมายถึงท่าน
         </EmptyState>
@@ -37,7 +38,7 @@ export default async function BookPage({ params }: { params: Promise<{ id: strin
   const b = detail.book;
   return (
     <div className="mx-auto max-w-6xl">
-      <PageHeader title={`หนังสือรับที่ ${b.receive_no}/${b.year}`} module="saraban" back="/saraban"
+      <PageHeader title={`หนังสือรับที่ ${b.receive_no}/${b.year}`} module="saraban" back="/saraban" help={sarabanHelp(profile.saraban_role)}
         subtitle={b.secret ? "หนังสือลับ" : b.from_org} />
       <BookView
         detail={detail}

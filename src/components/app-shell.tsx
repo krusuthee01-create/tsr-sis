@@ -170,6 +170,8 @@ function UserMenu({ name }: { name: string }) {
 
   async function logout() {
     await supabaseBrowser().auth.signOut();
+    // ลบ PDF สารบรรณที่ service worker เก็บไว้ (เครื่องใช้ร่วมกัน: คนถัดไปต้องไม่เปิดไฟล์ของเราจากแคชได้)
+    if ("caches" in window) await caches.delete("tsr-saraban-files").catch(() => false);
     router.replace("/login");
     router.refresh();
   }
