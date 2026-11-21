@@ -7,6 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildServiceJwt, createUploadSession, getFileMeta } from "../src/lib/saraban/drive.ts";
 import { formatReminderBody } from "../src/lib/saraban/push-text.ts";
+import { embedPng, endorsementLines, receiveStampLines } from "../src/lib/saraban/stamp.ts";
+import { PDFDocument } from "pdf-lib";
 import { formatLineMessage, pushLineGroup } from "../src/lib/saraban/line.ts";
 
 const b64urlJson = (s: string) => JSON.parse(Buffer.from(s, "base64url").toString("utf8"));
@@ -106,4 +108,45 @@ test("formatReminderBody: ลับไม่เผยชื่อเรื่อ
   const many = formatReminderBody([{ subject: "ลับมาก", secret: true }, { subject: "ประชุม", secret: false }]);
   assert.ok(!many.includes("ลับมาก") && many.includes("2 เรื่อง") && many.includes("…"));
   assert.ok(formatReminderBody([{ subject: "ประชุม", secret: false }]).includes("ประชุม"));
+});
+
+test("ตรารับ: 4 บรรทัด และเวลาเป็นเวลาไทย", () => {
+  const l = receiveStampLines({ schoolName: "โรงเรียนทดสอบ", receiveNo: 12, year: 2570, receivedAt: "2027-03-05T02:30:00Z" });
+  assert.equal(l.length, 4);
+  assert.equal(l[0], "โรงเรียนทดสอบ");
+  assert.equal(l[1], "รับที่ 12/2570");
+  assert.equal(l[2], "วันที่ 5 มีนาคม 2570");
+  assert.equal(l[3], "เวลา 09.30 น.");
+});
+
+test("คำเกษียน: ตัดบรรทัดไม่เกิน maxChars และท้ายเป็นชื่อ/ตำแหน่ง/วันที่", () => {
+  const note = Array.from({ length: 24 }, (_, i) => `คำที่${i}`).join(" ").padEnd(120, "ก");
+  const l = endorsementLines({ note, signerName: "นายสมชาย ใจดี", position: "ผู้อำนวยการ", date: "2026-10-22" });
+  const body = l.slice(0, -3);
+  assert.ok(body.length > 1);
+  assert.ok(body.every((x) => [...x].length <= 48));
+  assert.deepEqual(l.slice(-3), ["(นายสมชาย ใจดี)", "ผู้อำนวยการ", "22 ต.ค. 2569"]);
+});
+
+test("คำเกษียน: สตริงไทยยาวไม่มีช่องว่าง ไม่ขึ้นต้นด้วยสระ/วรรณยุกต์ลอย", () => {
+  const note = "ผู้บริหารสถานศึกษาพิจารณาเห็นสมควรมอบหมายให้ครูผู้รับผิดชอบดำเนินการตามระเบียบที่เกี่ยวข้องโดยเร็วที่สุดเพื่อประโยชน์ของนักเรียน".repeat(2);
+  const l = endorsementLines({ note, signerName: "ก", position: "ข", date: "2026-10-22" }, 20);
+  const body = l.slice(0, -3);
+  assert.ok(body.length > 3);
+  for (const x of body) {
+    assert.ok([...x].length <= 20, x);
+    assert.ok(!/^[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/.test(x), x);
+  }
+  assert.equal(body.join(""), note);
+});
+
+test("embedPng ฝัง PNG ลงหน้า PDF", async () => {
+  const doc = await PDFDocument.create();
+  doc.addPage([595, 842]);
+  const pdf = await doc.save();
+  const png = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+  const out = await embedPng(pdf, png, { page: 0, x: 400, y: 700, width: 150, height: 80 });
+  const re = await PDFDocument.load(out);
+  assert.equal(re.getPageCount(), 1);
+  assert.ok(out.length > pdf.length);
 });
