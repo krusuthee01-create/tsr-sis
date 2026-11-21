@@ -45,6 +45,10 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user && !PUBLIC_PATHS.some((p) => path.startsWith(p))) {
+    // API ของสารบรรณ (fetch จากเบราว์เซอร์) ตอบ 401 JSON แทนหน้าเข้าสู่ระบบแบบ HTML
+    if (path.startsWith("/saraban/api/")) {
+      return markMigrated(NextResponse.json({ error: "กรุณาเข้าสู่ระบบ" }, { status: 401 }), migration.done);
+    }
     // ไม่ใช้ NextResponse.redirect: middleware ของ Next บังคับ Location เป็น URL เต็มจาก Host ของคำขอ
     // ซึ่งหลัง Caddy คือ tsr-sis.vercel.app (เบราว์เซอร์จะหลุดออกจาก gotime) — จึง rewrite ภายใน
     // ไปที่ /sis/auth/to-login ที่ตอบ Location แบบ relative (/sis/login) แทน
