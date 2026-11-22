@@ -7,14 +7,14 @@ import type { PreparedEndorsement } from "../../pdf-client";
 
 export type Placement = { appendPage: boolean; box: PlaceBox };
 
-type PdfDoc = { numPages: number; getPage: (n: number) => Promise<PdfPage>; destroy: () => Promise<void> };
+export type PdfDoc = { numPages: number; getPage: (n: number) => Promise<PdfPage>; destroy: () => Promise<void> };
 type PdfPage = {
   getViewport: (o: { scale: number }) => { width: number; height: number };
   render: (o: { canvasContext: CanvasRenderingContext2D; viewport: { width: number; height: number } }) => { promise: Promise<void>; cancel: () => void };
 };
 
 /** โหลด pdf.js เฉพาะตอนเปิดหน้าลงนาม (ไม่อยู่ใน bundle หลัก) */
-async function openPdf(bytes: Uint8Array): Promise<PdfDoc> {
+export async function openPdf(bytes: Uint8Array): Promise<PdfDoc> {
   const pdfjs = await import("pdfjs-dist");
   pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
   // pdf.js ย้าย buffer ไปที่ worker — ส่งสำเนา ไม่ให้ไฟล์ต้นทางที่ใช้ฝังคำเกษียนว่างเปล่า
