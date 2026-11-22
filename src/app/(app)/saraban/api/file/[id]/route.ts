@@ -13,7 +13,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   if (!UUID.test(id)) return NextResponse.json({ error: "ไม่พบไฟล์" }, { status: 404 });
   const sb = await supabaseServer();
-  const { data: file } = await sb.from("saraban_files").select("drive_file_id, name").eq("id", id).maybeSingle();
+  // ไฟล์หนังสือรับ หรือสำเนาหนังสือส่ง (RLS ของแต่ละตาราง)
+  const { data: inFile } = await sb.from("saraban_files").select("drive_file_id, name").eq("id", id).maybeSingle();
+  const file = inFile ?? (await sb.from("saraban_out_files").select("drive_file_id, name").eq("id", id).maybeSingle()).data;
   if (!file) return NextResponse.json({ error: "ไม่พบไฟล์" }, { status: 404 });
 
   const upstream = await streamFile(file.drive_file_id).catch((e) => {

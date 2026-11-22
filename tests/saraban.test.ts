@@ -683,3 +683,24 @@ test("ทะเบียนหนังสือรับ: ช่องการ
   assert.equal(registryRemark({ secret: false, urgency: 0, doc_type: "external" }), "");
   assert.equal(registryRemark({ secret: true, urgency: 3, doc_type: "internal" }), "ลับ · ด่วนที่สุด · หนังสือภายใน");
 });
+
+test("หนังสือส่ง: ตรวจข้อมูลขอเลข และแถวทะเบียน", async () => {
+  const { parseOutInput, outRegistryRow, outRegistryHead } = await import("../src/lib/saraban/outgoing.ts");
+  const ok = { kind: "letter", docDate: "2026-11-22", toText: "ผอ.สพป.แพร่ เขต 1", subject: "ขอความอนุเคราะห์", secret: false, note: "" };
+  assert.ok(parseOutInput(ok).ok);
+  for (const bad of [null, { ...ok, kind: "x" }, { ...ok, subject: "  " }, { ...ok, secret: "no" }, { ...ok, docDate: "22/11/2569" }, { ...ok, subject: 5 }]) {
+    const r = parseOutInput(bad);
+    assert.equal(r.ok, false, JSON.stringify(bad));
+  }
+  const base = { id: "1", series: "out" as const, year: 2569, seq: 12, doc_date: "2026-11-22", to_text: "สพป.", subject: "เรื่อง", note: null,
+    requested_by: "s", deleted_at: null, deleted_reason: null, created_at: "", secret: false };
+  const letter = outRegistryRow({ ...base, kind: "letter", doc_no: "ศธ 04109.84/12" }, "ครูหนึ่ง", "โรงเรียนทดสอบ");
+  assert.equal(letter.length, outRegistryHead("out").length);
+  assert.deepEqual(letter.slice(0, 2), ["12", "ศธ 04109.84/12"]);
+  assert.equal(letter[3], "โรงเรียนทดสอบ");
+  const cancelled = outRegistryRow({ ...base, kind: "circular", doc_no: "ศธ 04109.84/ว 13", secret: true, deleted_at: "x", deleted_reason: "ออกซ้ำ" }, "ก", "ร");
+  assert.equal(cancelled[7], "ยกเลิก: ออกซ้ำ · ลับ · หนังสือเวียน");
+  const order = outRegistryRow({ ...base, series: "order", kind: "order", doc_no: "3/2569" }, "ก", "ร");
+  assert.equal(order.length, outRegistryHead("order").length);
+  assert.equal(order[0], "3/2569");
+});

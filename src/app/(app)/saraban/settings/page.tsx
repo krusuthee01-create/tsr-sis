@@ -1,6 +1,7 @@
 import { getProfile, supabaseAdmin, supabaseServer } from "@/lib/supabase/server";
 import { canManageDrive } from "@/lib/saraban/drive-connect";
 import { DriveCard } from "./drive-card";
+import { PrefixForm } from "./prefix-form";
 import { PageHeader } from "@/components/page-header";
 import type { Preset } from "@/lib/saraban/book";
 import { PresetEditor, PushToggle, SignatureForm } from "./settings-forms";
@@ -16,6 +17,9 @@ export default async function SarabanSettingsPage({ searchParams }: { searchPara
   ]);
   if (error) console.error("saraban_presets", error);
   const role = profile?.saraban_role ?? "teacher";
+
+  const { data: ss } = await sb.from("school_settings").select("saraban_prefix").eq("id", 1).maybeSingle();
+  const prefix = (ss as { saraban_prefix?: string } | null)?.saraban_prefix ?? "ศธ 04109.84";
 
   // สถานะที่เก็บไฟล์: อ่านด้วย service role เฉพาะคอลัมน์ที่ไม่ลับ และเฉพาะผู้ดูแลระบบ/ผอ.
   let drive: { account_email: string | null; connected_at: string } | null = null;
@@ -40,6 +44,7 @@ export default async function SarabanSettingsPage({ searchParams }: { searchPara
       <PushToggle vapidKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""} />
       {profile && <SignatureForm staffId={profile.id} />}
       <PresetEditor initial={(data ?? []) as Preset[]} editable={role === "director" || role === "clerk"} />
+      {(role === "director" || role === "clerk") && <PrefixForm initial={prefix} />}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpenText, GearSix, Plus } from "@phosphor-icons/react/dist/ssr";
+import { BookOpenText, GearSix, PaperPlaneTilt, Plus } from "@phosphor-icons/react/dist/ssr";
 import { getProfile, supabaseServer } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/page-header";
 import { LinkButton } from "@/components/ui";
@@ -32,6 +32,7 @@ export default async function SarabanPage({ searchParams }: { searchParams: Prom
         actions={<>
           {canRegister && <LinkButton href="/saraban/new" variant="secondary"><Plus size={20} weight="bold" /> ลงรับหนังสือ</LinkButton>}
           {canRegister && <LinkButton href="/saraban/register" variant="secondary"><BookOpenText size={20} weight="bold" /> ทะเบียนรับ</LinkButton>}
+          <LinkButton href="/saraban/out" variant="secondary"><PaperPlaneTilt size={20} weight="bold" /> หนังสือส่ง / ขอเลข</LinkButton>
           <Link href="/saraban/settings" aria-label="ตั้งค่าสารบรรณ" title="ตั้งค่าสารบรรณ"
             className="flex size-[2.875rem] items-center justify-center rounded-xl bg-white/20 hover:bg-white/30"><GearSix size={24} weight="bold" /></Link>
         </>} />

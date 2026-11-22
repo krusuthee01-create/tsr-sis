@@ -7,15 +7,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * เปิด resumable upload session ของ Google Drive ให้เบราว์เซอร์อัปโหลด PDF ตรง (ไม่ผ่านขีดจำกัด 4.5MB ของ Vercel)
- * body: {bookId, kind, name, size} → {uploadUrl}
+ * body: {bookId, kind, name, size} → {uploadUrl} · สำเนาหนังสือส่ง: {outId, name, size} (kind = "outgoing")
  */
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => null)) as { bookId?: unknown; kind?: unknown; name?: unknown; size?: unknown } | null;
-  const bookId = typeof body?.bookId === "string" ? body.bookId : "";
-  const kind = body?.kind as FileKind;
+  const body = (await req.json().catch(() => null)) as { bookId?: unknown; outId?: unknown; kind?: unknown; name?: unknown; size?: unknown } | null;
+  const outId = typeof body?.outId === "string" ? body.outId : "";
+  const isOut = outId !== "";
+  const bookId = isOut ? outId : typeof body?.bookId === "string" ? body.bookId : "";
+  const kind = (isOut ? "outgoing" : body?.kind) as FileKind | "outgoing";
   const name = typeof body?.name === "string" ? body.name.trim().slice(0, 200) : "";
   const size = typeof body?.size === "number" ? body.size : NaN;
-  if (!UUID.test(bookId) || !FILE_KINDS.includes(kind) || !name || !Number.isInteger(size) || size <= 0) {
+  if (!UUID.test(bookId) || (!isOut && !FILE_KINDS.includes(kind as FileKind)) || !name || !Number.isInteger(size) || size <= 0) {
     return NextResponse.json({ error: "ข้อมูลไฟล์ไม่ถูกต้อง" }, { status: 400 });
   }
   if (size > MAX_UPLOAD_BYTES) return NextResponse.json({ error: "ไฟล์ใหญ่เกิน 30 MB" }, { status: 413 });
@@ -23,7 +25,7 @@ export async function POST(req: Request) {
   // ตรวจสิทธิ์ด้วย client ของผู้ใช้ (บทบาทมาจาก auth.uid() ในฐานข้อมูล)
   const sb = await supabaseServer();
   const [{ data: allowed }, { data: staffId }] = await Promise.all([
-    sb.rpc("saraban_can_upload", { p_book: bookId, p_kind: kind }),
+    isOut ? sb.rpc("saraban_out_can_upload", { p_out: outId }) : sb.rpc("saraban_can_upload", { p_book: bookId, p_kind: kind }),
     sb.rpc("my_staff_id"),
   ]);
   if (allowed !== true || typeof staffId !== "string") {
