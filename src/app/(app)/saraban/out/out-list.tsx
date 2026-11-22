@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, FilePdf, LockSimple, Paperclip, Plus, Prohibit } from "@phosphor-icons/react";
@@ -33,9 +34,13 @@ export function OutList(props: {
   return (
     <>
       <Card className="no-print mb-3 flex flex-wrap items-end gap-3">
-        <Button onClick={() => setOpen(true)} disabled={year !== thisYear} title={year !== thisYear ? "ขอเลขได้เฉพาะปีปัจจุบัน" : undefined}>
-          <Plus size={20} weight="bold" /> ขอเลข{series === "out" ? "หนังสือส่ง" : OUT_KIND_LABEL[SERIES_KINDS[series][0]]}
-        </Button>
+        {series === "memo" ? (
+          <Link href="/saraban/memo/new" className={btnClass("primary")}><Plus size={20} weight="bold" /> เขียนบันทึกข้อความ</Link>
+        ) : (
+          <Button onClick={() => setOpen(true)} disabled={year !== thisYear} title={year !== thisYear ? "ขอเลขได้เฉพาะปีปัจจุบัน" : undefined}>
+            <Plus size={20} weight="bold" /> ขอเลข{series === "out" ? "หนังสือส่ง" : OUT_KIND_LABEL[SERIES_KINDS[series][0]]}
+          </Button>
+        )}
         <label className="flex flex-col gap-1 text-sm font-semibold">ปี พ.ศ.
           <select className="field-input" value={year} onChange={(e) => router.push(`/saraban/out?s=${series}&y=${e.target.value}`)}>
             {Array.from({ length: 6 }, (_, i) => thisYear - i).map((y) => <option key={y} value={y}>{y}</option>)}
@@ -62,7 +67,7 @@ export function OutList(props: {
           </table>
         </>
       )}
-      <IssueSheet open={open} onClose={() => setOpen(false)} series={series} />
+      {series !== "memo" && <IssueSheet open={open} onClose={() => setOpen(false)} series={series} />}
     </>
   );
 }
@@ -109,7 +114,7 @@ function OutCard({ o, canEdit, office }: { o: OutItem; canEdit: boolean; office:
           {o.secret && <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800"><LockSimple size={12} weight="fill" aria-hidden /> ลับ</span>}
           {o.deleted_at && <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold">ยกเลิก: {o.deleted_reason}</span>}
         </div>
-        <p className="font-semibold leading-snug">{o.subject}</p>
+        <p className="font-semibold leading-snug">{o.book_id ? <Link href={`/saraban/book/${o.book_id}`} className="underline-offset-2 hover:underline">{o.subject}</Link> : o.subject}</p>
         <p className="text-sm text-muted">{o.to_text ? `ถึง ${o.to_text} · ` : ""}ขอเลขโดย {o.requester}{o.note ? ` · ${o.note}` : ""}</p>
         <div className="flex flex-wrap gap-2">
           {o.fileId && (
@@ -117,7 +122,7 @@ function OutCard({ o, canEdit, office }: { o: OutItem; canEdit: boolean; office:
               <FilePdf size={18} /> สำเนา
             </a>
           )}
-          {canEdit && (
+          {canEdit && o.kind !== "memo" && (
             <>
               <input ref={fileInput} type="file" accept="application/pdf,.pdf" className="sr-only" aria-label="เลือกไฟล์ PDF"
                 onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) attach(f); }} />

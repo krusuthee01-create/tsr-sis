@@ -3,14 +3,17 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FilePdf, LockSimple, UploadSimple, WarningCircle, X } from "@phosphor-icons/react";
+import { Crosshair, FilePdf, LockSimple, UploadSimple, WarningCircle, X } from "@phosphor-icons/react";
 import { Button, Card, Field, SectionTitle } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { formatThaiDate, todayISO } from "@/lib/thai-date";
 import { DOC_TYPE_LABEL, DOC_TYPES, URGENCY_LABEL, type DocType, type Urgency } from "@/lib/saraban/types";
 import { validateRegister, type RegisterInput } from "@/lib/saraban/register";
 import { findDuplicates, orgSuggestions, registerBook, type DuplicateBook } from "../actions";
-import { attachPdf, readPdf, type Picked } from "../pdf-client";
+import type { PlaceBox } from "@/lib/saraban/book";
+import { attachPdf, prepareReceiveStamp, readPdf, spotFromBox, type Picked, type PreparedEndorsement } from "../pdf-client";
+import { Sheet } from "../book/[id]/endorse-panel";
+import { PlacementPicker } from "../book/[id]/placement-picker";
 
 type Errors = Partial<Record<keyof RegisterInput | "file", string>>;
 
@@ -43,6 +46,22 @@ export function RegisterForm({ schoolName }: { schoolName: string }) {
   const [step, setStep] = useState<string | null>(null);
   const busy = step !== null;
   const submitting = useRef(false); // กันกดซ้ำก่อน state อัปเดต
+  // ตำแหน่งตรารับ: ค่าเริ่มต้นมุมขวาบนหน้าแรก · แตะเลือกใหม่ได้ (ไม่ทับครุฑ/หัวหนังสือ)
+  const [stamp, setStamp] = useState<{ prepared: PreparedEndorsement; box: PlaceBox; custom: boolean } | null>(null);
+  const [placing, setPlacing] = useState(false);
+  const [draftBox, setDraftBox] = useState<PlaceBox | null>(null);
+
+  async function openPlacement() {
+    if (!picked || picked.encrypted) return;
+    try {
+      const s = stamp ?? { ...(await prepareReceiveStamp(picked, schoolName)), custom: false };
+      setStamp(s);
+      setDraftBox(s.box);
+      setPlacing(true);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "แสดงตัวอย่างตรารับไม่ได้", "error");
+    }
+  }
 
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => {
     setF((x) => ({ ...x, [k]: v }));
@@ -82,6 +101,7 @@ export function RegisterForm({ schoolName }: { schoolName: string }) {
     setErrors((e) => ({ ...e, file: undefined }));
     try {
       setPicked(await readPdf(file));
+      setStamp(null);
     } catch (err) {
       setPicked(null);
       setErrors((e) => ({ ...e, file: err instanceof Error ? err.message : "เปิดไฟล์ไม่ได้" }));
@@ -130,8 +150,9 @@ export function RegisterForm({ schoolName }: { schoolName: string }) {
     const go = () => router.push(`/saraban/book/${res.id}`);
 
     // ได้เลขรับแล้ว: อัปโหลดล้มเหลวก็ยังไปหน้าหนังสือ (มีปุ่ม "แนบไฟล์อีกครั้ง")
+    const spot = stamp?.custom ? spotFromBox(stamp.box, stamp.prepared.pages[stamp.box.page]) : undefined;
     const r = await attachPdf(pdf, { schoolName, receiveNo: res.receiveNo, year: res.year, receivedAt: res.receivedAt, bookId: res.id },
-      (t) => setStep(`ได้เลขรับ ${no} · ${t}`));
+      (t) => setStep(`ได้เลขรับ ${no} · ${t}`), spot);
     if (!r.ok) {
       const what = r.stage === "upload" ? "อัปโหลดไฟล์ไม่สำเร็จ" : "ประทับตรารับไม่สำเร็จ";
       toast(`ลงรับแล้ว เลขรับ ${no} แต่${what} (${r.error}) กรุณากด "แนบไฟล์อีกครั้ง" ในหน้าหนังสือ`, "error");
@@ -159,7 +180,7 @@ export function RegisterForm({ schoolName }: { schoolName: string }) {
               <p className="text-sm text-muted">{picked.pages} หน้า · {fmtSize(picked.file.size)}
                 {picked.encrypted && <span className="text-amber-800"> · ไฟล์ถูกล็อก ประทับตรารับลงไฟล์ไม่ได้</span>}</p>
             </div>
-            <button type="button" aria-label="เอาไฟล์ออก" disabled={busy} onClick={() => setPicked(null)}
+            <button type="button" aria-label="เอาไฟล์ออก" disabled={busy} onClick={() => { setPicked(null); setStamp(null); }}
               className="flex size-11 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-40">
               <X size={20} />
             </button>
@@ -178,7 +199,31 @@ export function RegisterForm({ schoolName }: { schoolName: string }) {
         <input ref={fileInput} id="saraban-file" type="file" accept="application/pdf,.pdf" className="sr-only" disabled={busy}
           onChange={(e) => pick(e.target.files?.[0])} />
         {errors.file && <p className="mt-2 text-sm font-medium text-red-700" role="alert">{errors.file}</p>}
+        {picked && !picked.encrypted && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2">
+            <span className="text-sm">
+              ตำแหน่งตรารับ: <strong>{stamp?.custom ? `หน้า ${stamp.box.page + 1} (เลือกเอง)` : "มุมขวาบน หน้า 1"}</strong>
+            </span>
+            <Button type="button" variant="secondary" disabled={busy} onClick={openPlacement}>
+              <Crosshair size={18} weight="bold" /> เลือกตำแหน่ง
+            </Button>
+          </div>
+        )}
       </Card>
+      <Sheet open={placing} onClose={() => setPlacing(false)} title="แตะเลือกตำแหน่งตรารับ" wide>
+        {stamp && draftBox && (
+          <div className="flex flex-col gap-3">
+            <PlacementPicker prepared={stamp.prepared} value={{ appendPage: false, box: draftBox }} what="ตรารับ" allowAppend={false}
+              onChange={(p) => setDraftBox(p.box)} />
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant="secondary" onClick={() => { setPlacing(false); setStamp(null); }}>
+                ใช้มุมขวาบน
+              </Button>
+              <Button type="button" onClick={() => { setStamp({ ...stamp, box: draftBox, custom: true }); setPlacing(false); }}>ยืนยันตำแหน่ง</Button>
+            </div>
+          </div>
+        )}
+      </Sheet>
 
       <Card className="flex flex-col gap-4">
         <SectionTitle>2. รายละเอียดหนังสือ</SectionTitle>

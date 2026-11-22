@@ -2,24 +2,26 @@
 import { formatThaiDate } from "../thai-date.ts";
 import { isIsoDate } from "./register.ts";
 
-export type OutKind = "letter" | "circular" | "order" | "announce";
-export type OutSeries = "out" | "order" | "announce";
+export type OutKind = "letter" | "circular" | "order" | "announce" | "memo";
+export type OutSeries = "out" | "order" | "announce" | "memo";
+/** ชนิดที่ขอเลขได้จากหน้าทะเบียน (บันทึกข้อความออกเลขจากหน้าเขียนบันทึกข้อความ) */
 export const OUT_KINDS: readonly OutKind[] = ["letter", "circular", "order", "announce"];
-export const OUT_SERIES: readonly OutSeries[] = ["out", "order", "announce"];
+export const OUT_SERIES: readonly OutSeries[] = ["out", "order", "announce", "memo"];
 
 export const OUT_KIND_LABEL: Record<OutKind, string> = {
   letter: "หนังสือส่ง",
   circular: "หนังสือเวียน",
   order: "คำสั่ง",
   announce: "ประกาศ",
+  memo: "บันทึกข้อความ",
 };
-export const OUT_SERIES_LABEL: Record<OutSeries, string> = { out: "หนังสือส่ง", order: "คำสั่ง", announce: "ประกาศ" };
+export const OUT_SERIES_LABEL: Record<OutSeries, string> = { out: "หนังสือส่ง", order: "คำสั่ง", announce: "ประกาศ", memo: "บันทึกข้อความ" };
 /** ชนิดที่เลือกได้ในแต่ละชุดเลข */
-export const SERIES_KINDS: Record<OutSeries, OutKind[]> = { out: ["letter", "circular"], order: ["order"], announce: ["announce"] };
+export const SERIES_KINDS: Record<OutSeries, OutKind[]> = { out: ["letter", "circular"], order: ["order"], announce: ["announce"], memo: ["memo"] };
 
 export type OutRow = {
   id: string; kind: OutKind; series: OutSeries; year: number; seq: number; doc_no: string; doc_date: string;
-  to_text: string | null; subject: string; secret: boolean; note: string | null; requested_by: string;
+  to_text: string | null; subject: string; secret: boolean; note: string | null; requested_by: string; book_id?: string | null;
   deleted_at: string | null; deleted_reason: string | null; created_at: string;
 };
 

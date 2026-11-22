@@ -704,3 +704,30 @@ test("หนังสือส่ง: ตรวจข้อมูลขอเล
   assert.equal(order.length, outRegistryHead("order").length);
   assert.equal(order[0], "3/2569");
 });
+
+test("บันทึกข้อความ: ตรวจข้อมูล ตัดบรรทัด และขึ้นหน้าใหม่", async () => {
+  const { parseMemoInput, wrapThai, layoutMemo, MEMO_PAGE } = await import("../src/lib/saraban/memo.ts");
+  const base = { unit: "โรงเรียนทดสอบ", subject: "ขออนุญาต", to: "ผู้อำนวยการ", cause: "ด้วย", intent: "จึง", closing: "", position: "ครู" };
+  assert.ok(parseMemoInput(base).ok);
+  assert.equal(parseMemoInput({ ...base, subject: " " }).ok, false);
+  assert.equal(parseMemoInput({ ...base, cause: "", intent: "" }).ok, false);
+  assert.equal(parseMemoInput({ ...base, cause: 5 }).ok, false);
+  // วัดความกว้างแบบง่าย: ตัวละ 5pt
+  const measure = (t: string) => [...t].length * 5;
+  const lines = wrapThai("ด้วยโรงเรียนจะจัดกิจกรรมวันเด็กแห่งชาติประจำปีให้แก่นักเรียนทุกระดับชั้น", 100, measure, 15);
+  assert.ok(lines.length > 1);
+  assert.ok(lines.every((l) => [...l].length * 5 <= 100), JSON.stringify(lines));
+  assert.equal(lines.join(""), "ด้วยโรงเรียนจะจัดกิจกรรมวันเด็กแห่งชาติประจำปีให้แก่นักเรียนทุกระดับชั้น");
+  assert.ok(lines.every((l) => !/^[ัิ-ฺ็-๎]/.test(l)));
+  const long = { ...base, cause: "ข้อความยาวมาก ".repeat(400), docNo: "ศธ 04109.84/บ 12", date: "2026-11-22", signerName: "นางครู ดี", hasSignature: true };
+  const pages = layoutMemo(long, measure);
+  assert.ok(pages.length >= 2, "ขึ้นหน้าใหม่เมื่อเนื้อหายาว");
+  for (const p of pages) for (const op of p) if (op.t === "text") assert.ok(op.y <= MEMO_PAGE.height - MEMO_PAGE.bottom + 1, "ไม่ล้นขอบล่าง");
+  const texts = pages.flat().filter((o) => o.t === "text").map((o) => (o as { text: string }).text);
+  assert.ok(texts.includes("บันทึกข้อความ"));
+  assert.ok(texts.includes("ศธ ๐๔๑๐๙.๘๔/บ ๑๒"), "เลขที่เป็นเลขไทย");
+  assert.ok(texts.includes("๒๒ พฤศจิกายน ๒๕๖๙"));
+  assert.ok(texts.includes("(นางครู ดี)"));
+  assert.ok(texts.includes("-๒-"), "เลขหน้าที่ ๒");
+  assert.ok(pages[0].some((o) => o.t === "image" && o.key === "garuda"));
+});

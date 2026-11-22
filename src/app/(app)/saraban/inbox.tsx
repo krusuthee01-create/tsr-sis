@@ -10,7 +10,7 @@ import { STATUS_LABEL, URGENCY_LABEL, type BookStatus, type Urgency } from "@/li
 import { formatThaiDate, todayISO } from "@/lib/thai-date";
 import { loadInbox, type InboxRow } from "./actions";
 
-export type InboxFilter = "all" | "todo" | "unread";
+export type InboxFilter = "all" | "todo" | "unread" | "mine";
 
 // สีป้ายตามชั้นความเร็ว: ปกติ เทา / ด่วน เหลือง / ด่วนมาก ส้ม / ด่วนที่สุด แดง
 const URGENCY_STYLE: Record<Urgency, string> = {
@@ -24,6 +24,7 @@ const EMPTY_TEXT: Record<InboxFilter, string> = {
   todo: "ไม่มีงานค้างของท่าน",
   all: "ยังไม่มีหนังสือ",
   unread: "อ่านหนังสือครบทุกฉบับแล้ว",
+  mine: "ยังไม่มีบันทึกข้อความที่ท่านเขียน",
 };
 
 function hrefFor(filter: InboxFilter, q: string) {
@@ -41,6 +42,7 @@ export function Inbox({ rows, q, filter, offset, error }: { rows: InboxRow[]; q:
           { id: "todo", label: "งานของฉัน", href: hrefFor("todo", q) },
           { id: "all", label: "ทั้งหมด", href: hrefFor("all", q) },
           { id: "unread", label: "ยังไม่อ่าน", href: hrefFor("unread", q) },
+          { id: "mine", label: "บันทึกของฉัน", href: hrefFor("mine", q) },
         ]} />
       </Card>
       {error && <p className="mb-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{error}</p>}
