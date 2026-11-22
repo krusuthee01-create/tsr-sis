@@ -14,7 +14,7 @@ import { embedPng, endorsementLines, pngSizePt, receiveStampLines } from "../src
 import { PDFDocument } from "pdf-lib";
 import { formatLineMessage, pushLineGroup } from "../src/lib/saraban/line.ts";
 import { isIsoDate, parseRegisterInput, receiveStampBox, validateRegister } from "../src/lib/saraban/register.ts";
-import { A4, endorsementPlacement, hasNoteLine, isUuid, placeAtTap, toggleNoteLine, latestFile, parseNote, parseTargets, safeMessage, siteOrigin } from "../src/lib/saraban/book.ts";
+import { A4, endorsementPlacement, hasNoteLine, isUuid, placeAtTap, registryAction, registryRemark, toggleNoteLine, latestFile, parseNote, parseTargets, safeMessage, siteOrigin } from "../src/lib/saraban/book.ts";
 
 const b64urlJson = (s: string) => JSON.parse(Buffer.from(s, "base64url").toString("utf8"));
 
@@ -672,4 +672,14 @@ test("toggleNoteLine: แตะเพิ่มบรรทัด แตะซ้
   assert.equal(n, "- แจ้งหนังสือเวียนให้ครูทุกคนทราบ");
   assert.ok(!hasNoteLine(n, "ทราบ"));
   assert.equal(toggleNoteLine("ข้อความเอง\n\n", "เรียน ผอ.", ""), "ข้อความเอง\nเรียน ผอ.");
+});
+
+test("ทะเบียนหนังสือรับ: ช่องการปฏิบัติและหมายเหตุ", () => {
+  assert.equal(registryAction("registered", null, []), "ลงรับ");
+  assert.equal(registryAction("proposed", "ผอ.", []), "เสนอ ผอ.");
+  assert.equal(registryAction("endorsed", "วิไล หัวหน้า", []), "มอบ วิไล หัวหน้า");
+  assert.equal(registryAction("assigned", null, ["ครูดี", "ครูสอง"]), "มอบ ครูดี, ครูสอง");
+  assert.equal(registryAction("closed", null, []), "จัดเก็บ");
+  assert.equal(registryRemark({ secret: false, urgency: 0, doc_type: "external" }), "");
+  assert.equal(registryRemark({ secret: true, urgency: 3, doc_type: "internal" }), "ลับ · ด่วนที่สุด · หนังสือภายใน");
 });
