@@ -12,6 +12,7 @@ import { ACTION_LABEL, FILE_KIND_LABEL, latestFile, type BookDetail, type Preset
 import { deleteBook, markRead, renumberBook } from "../../actions";
 import { attachPdf, readPdf } from "../../pdf-client";
 import { EndorsePanel, Sheet, type Me } from "./endorse-panel";
+import { PdfView } from "./pdf-view";
 
 const URGENCY_TONE = { 0: "gray", 1: "amber", 2: "amber", 3: "red" } as const;
 
@@ -71,8 +72,7 @@ export function BookView({ detail, me, staff, presets, schoolName }: {
             </a>
           ) : undefined}>ตัวหนังสือ</SectionTitle>
           {latest ? (
-            <iframe src={withBase(`/saraban/api/file/${latest.id}`)} title={`ไฟล์หนังสือรับที่ ${book.receive_no}/${book.year}`}
-              className="h-[60dvh] w-full rounded-xl border border-line bg-slate-50 xl:h-[82vh]" />
+            <PdfView fileId={latest.id} title={`ไฟล์หนังสือรับที่ ${book.receive_no}/${book.year}`} />
           ) : (
             <p className="rounded-xl bg-slate-50 px-3 py-6 text-center text-muted">ยังไม่มีไฟล์หนังสือ</p>
           )}
