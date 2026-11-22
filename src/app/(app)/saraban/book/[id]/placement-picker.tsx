@@ -25,7 +25,12 @@ async function openPdf(bytes: Uint8Array): Promise<PdfDoc> {
  * แตะ/คลิกตรงพื้นที่ว่างบนหน้าเอกสารเพื่อวางคำเกษียน (แบบระบบเดิมของโรงเรียน)
  * แสดงตัวอย่างคำเกษียนจริงบนหน้า · เลื่อนหน้าได้ · เลือก "หน้าใหม่ท้ายไฟล์" ได้เมื่อไม่มีที่ว่าง
  */
-export function PlacementPicker({ prepared, value, onChange }: { prepared: PreparedEndorsement; value: Placement; onChange: (p: Placement) => void }) {
+export function PlacementPicker({ prepared, value, onChange, what = "คำเกษียน", maxPageVh = 52, allowAppend = true }: {
+  prepared: PreparedEndorsement; value: Placement; onChange: (p: Placement) => void;
+  /** ชื่อสิ่งที่วาง (คำเกษียน / ตรารับ) */ what?: string;
+  /** ความสูงสูงสุดของภาพหน้า (% ของจอ) */ maxPageVh?: number;
+  /** ให้เลือก "หน้าใหม่ท้ายไฟล์" ได้ */ allowAppend?: boolean;
+}) {
   const total = prepared.pages.length;
   const [view, setView] = useState(value.appendPage ? total : value.box.page); // total = หน้าใหม่ท้ายไฟล์
   const [doc, setDoc] = useState<PdfDoc | null>(null);
@@ -77,7 +82,7 @@ export function PlacementPicker({ prepared, value, onChange }: { prepared: Prepa
   return (
     <div className="flex flex-col gap-2">
       <p className="rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-900">
-        แตะตรง<strong>พื้นที่ว่าง</strong>ในเอกสารเพื่อวางคำเกษียน (จุดที่แตะคือมุมซ้ายบน) · ตำแหน่งที่วางไว้ใช้ได้ กดยืนยันได้เลย
+        แตะตรง<strong>พื้นที่ว่าง</strong>ในเอกสารเพื่อวาง{what} (จุดที่แตะคือมุมซ้ายบน) · ตำแหน่งที่วางไว้ใช้ได้ กดยืนยันได้เลย
       </p>
       <div className="flex items-center justify-between gap-2">
         <button type="button" aria-label="หน้าก่อน" disabled={view === 0} onClick={() => setView((v) => v - 1)}
@@ -85,21 +90,22 @@ export function PlacementPicker({ prepared, value, onChange }: { prepared: Prepa
         <span className="text-sm font-semibold" aria-live="polite">
           {view >= total ? "หน้าใหม่ท้ายไฟล์" : `หน้า ${view + 1} / ${total}`}
         </span>
-        <button type="button" aria-label="หน้าถัดไป" disabled={view >= total} onClick={() => setView((v) => v + 1)}
+        <button type="button" aria-label="หน้าถัดไป" disabled={view >= (allowAppend ? total : total - 1)} onClick={() => setView((v) => v + 1)}
           className="flex size-11 items-center justify-center rounded-xl border-[1.5px] border-slate-300 disabled:opacity-40">
-          {view === total - 1 ? <FilePlus size={20} /> : <CaretRight size={20} />}
+          {view === total - 1 && allowAppend ? <FilePlus size={20} /> : <CaretRight size={20} />}
         </button>
       </div>
-      <div ref={wrap} className="relative w-full cursor-crosshair overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm"
-        style={{ aspectRatio: `${size.width} / ${size.height}` }} onClick={tap}
-        role="application" aria-label={`ภาพหน้าเอกสาร แตะเพื่อวางคำเกษียน`}>
+      {/* ทั้งหน้าต้องอยู่ในจอ (มือถือ): จำกัดความกว้างตามความสูงจอที่เหลือหลังหัว/ปุ่มยืนยัน */}
+      <div ref={wrap} className="relative mx-auto w-full cursor-crosshair overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm"
+        style={{ aspectRatio: `${size.width} / ${size.height}`, maxWidth: `calc(${maxPageVh}dvh * ${size.width / size.height})` }} onClick={tap}
+        role="application" aria-label={`ภาพหน้าเอกสาร แตะเพื่อวาง${what}`}>
         {view < total && <canvas ref={canvas} className="absolute inset-0 size-full" aria-hidden />}
         {view < total && !doc && !failed && <p className="absolute inset-0 flex items-center justify-center text-sm text-muted">กำลังแสดงหน้าเอกสาร…</p>}
         {view < total && failed && <p className="absolute inset-0 flex items-center justify-center p-4 text-center text-sm text-muted">แสดงภาพหน้าเอกสารไม่ได้ ยังแตะเพื่อกำหนดตำแหน่งได้</p>}
         {view >= total && <p className="absolute inset-x-0 top-1/2 text-center text-sm text-muted">หน้า A4 ว่าง (เพิ่มท้ายไฟล์)</p>}
         {shown && (
           // eslint-disable-next-line @next/next/no-img-element -- ภาพตัวอย่างจาก blob ในเครื่อง
-          <img src={imgUrl} alt="ตัวอย่างคำเกษียน" className="pointer-events-none absolute outline outline-2 outline-offset-2 outline-sky-500/70"
+          <img src={imgUrl} alt={`ตัวอย่าง${what}`} className="pointer-events-none absolute outline outline-2 outline-offset-2 outline-sky-500/70"
             style={{
               left: `${(b.x / size.width) * 100}%`,
               top: `${((size.height - b.y - b.height) / size.height) * 100}%`,
@@ -107,7 +113,7 @@ export function PlacementPicker({ prepared, value, onChange }: { prepared: Prepa
             }} />
         )}
       </div>
-      {!shown && <p className="text-center text-sm text-muted">คำเกษียนอยู่{value.appendPage ? "ในหน้าใหม่ท้ายไฟล์" : `ที่หน้า ${b.page + 1}`} — แตะหน้านี้เพื่อย้ายมาวางที่นี่</p>}
+      {!shown && <p className="text-center text-sm text-muted">{what}อยู่{value.appendPage ? "ในหน้าใหม่ท้ายไฟล์" : `ที่หน้า ${b.page + 1}`} — แตะหน้านี้เพื่อย้ายมาวางที่นี่</p>}
     </div>
   );
 }

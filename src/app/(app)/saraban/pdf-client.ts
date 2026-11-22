@@ -2,7 +2,7 @@
 import { withBase } from "@/lib/base-path";
 import { MAX_UPLOAD_BYTES } from "@/lib/saraban/types";
 import { receiveStampBox } from "@/lib/saraban/register";
-import { A4, endorsementPlacement, safeMessage, type PlaceBox } from "@/lib/saraban/book";
+import { A4, endorsementPlacement, placeAtTap, safeMessage, type PlaceBox } from "@/lib/saraban/book";
 import { uploadPdf } from "./upload";
 
 export type Picked = { file: File; bytes: Uint8Array; pages: number; encrypted: boolean };
@@ -33,8 +33,11 @@ export async function readPdf(file: File): Promise<Picked> {
   }
 }
 
-/** วาดตรารับ + QR แล้วฝังที่มุมขวาบนของหน้าแรก */
-async function stampPdf(bytes: Uint8Array, s: StampInfo) {
+/** ตำแหน่งตรารับที่ผู้ลงรับเลือก: หน้า + มุมซ้ายบน (สัดส่วนของหน้า 0–1) — ไม่ระบุ = มุมขวาบนหน้าแรก */
+export type StampSpot = { page: number; fx: number; fy: number };
+
+/** วาดตรารับ + QR แล้วฝังตามตำแหน่งที่เลือก (ค่าเริ่มต้นมุมขวาบนของหน้าแรก) */
+async function stampPdf(bytes: Uint8Array, s: StampInfo, spot?: StampSpot) {
   // โหลดเฉพาะตอนใช้ (canvas/pdf-lib ไม่ต้องอยู่ในหน้าแรกของ bundle)
   const [{ drawReceiveStamp }, { receiveStampLines, pngSizePt, embedPng }, { PDFDocument }] = await Promise.all([
     import("@/lib/saraban/stamp-canvas"),
@@ -44,8 +47,33 @@ async function stampPdf(bytes: Uint8Array, s: StampInfo) {
   const lines = receiveStampLines({ schoolName: s.schoolName, receiveNo: s.receiveNo, year: s.year, receivedAt: s.receivedAt });
   const png = await drawReceiveStamp(lines, location.origin + withBase("/saraban/book/" + s.bookId));
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-  const box = receiveStampBox(doc.getPage(0).getSize(), pngSizePt(png));
+  const pt = pngSizePt(png);
+  const page = spot && spot.page >= 0 && spot.page < doc.getPageCount() ? spot.page : 0;
+  const box = spot ? placeAtTap(spot, doc.getPage(page).getSize(), pt, page) : receiveStampBox(doc.getPage(0).getSize(), pt);
   return embedPng(bytes, png, box);
+}
+
+/**
+ * ตัวอย่างตรารับก่อนลงรับ (ยังไม่มีเลข: ใช้เลขยาวสุดเพื่อให้ขนาดเท่าของจริง) ไว้ให้แตะเลือกตำแหน่ง
+ * ค่าเริ่มต้นคือมุมขวาบนของหน้าแรก
+ */
+export async function prepareReceiveStamp(pdf: Picked, schoolName: string): Promise<{ prepared: PreparedEndorsement; box: PlaceBox }> {
+  const [{ drawReceiveStamp }, { receiveStampLines, pngSizePt }, { PDFDocument }] = await Promise.all([
+    import("@/lib/saraban/stamp-canvas"),
+    import("@/lib/saraban/stamp"),
+    import("pdf-lib"),
+  ]);
+  const lines = receiveStampLines({ schoolName, receiveNo: 8888, year: 2569, receivedAt: new Date().toISOString() });
+  const png = await drawReceiveStamp(lines, location.origin + withBase("/saraban"));
+  const doc = await PDFDocument.load(pdf.bytes, { ignoreEncryption: true });
+  const pages = doc.getPages().map((p) => p.getSize());
+  const png_pt = pngSizePt(png);
+  return { prepared: { bytes: pdf.bytes, png, png_pt, pages }, box: receiveStampBox(pages[0], png_pt) };
+}
+
+/** แปลงกรอบที่แตะเลือก (พิกัด PDF) เป็นตำแหน่งสัดส่วน ใช้กับตราจริงที่ขนาดต่างเล็กน้อยได้ */
+export function spotFromBox(box: PlaceBox, page: { width: number; height: number }): StampSpot {
+  return { page: box.page, fx: box.x / page.width, fy: (page.height - box.y - box.height) / page.height };
 }
 
 export type AttachResult = { ok: true; stamped: boolean } | { ok: false; stage: "upload" | "stamp"; error: string };
@@ -54,7 +82,7 @@ export type AttachResult = { ok: true; stamped: boolean } | { ok: false; stage: 
  * อัปโหลดต้นฉบับ แล้วประทับตรารับและอัปโหลดฉบับประทับตรา (ไฟล์ที่ล็อกไว้ข้ามการประทับตรา: stamped=false)
  * ไม่ throw — คืนขั้นที่ล้มเหลวพร้อมข้อความภาษาไทย
  */
-export async function attachPdf(pdf: Picked, s: StampInfo, onStep: (text: string) => void): Promise<AttachResult> {
+export async function attachPdf(pdf: Picked, s: StampInfo, onStep: (text: string) => void, spot?: StampSpot): Promise<AttachResult> {
   try {
     onStep("กำลังอัปโหลดต้นฉบับ…");
     await uploadPdf(s.bookId, "original", pdf.file.name, pdf.file);
@@ -64,7 +92,7 @@ export async function attachPdf(pdf: Picked, s: StampInfo, onStep: (text: string
   if (pdf.encrypted) return { ok: true, stamped: false };
   try {
     onStep("กำลังประทับตรารับ…");
-    const stamped = await stampPdf(pdf.bytes, s);
+    const stamped = await stampPdf(pdf.bytes, s, spot);
     onStep("กำลังอัปโหลดฉบับประทับตรา…");
     const name = `รับที่ ${s.receiveNo}-${s.year} ${pdf.file.name}`.slice(0, 200);
     await uploadPdf(s.bookId, "stamped", name, new Blob([stamped as BlobPart], { type: "application/pdf" }));

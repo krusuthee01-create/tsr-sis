@@ -148,8 +148,8 @@ export type InboxRow = {
 };
 
 /** รายการหนังสือหน้าถัดไป (ปุ่ม "โหลดเพิ่ม") */
-export async function loadInbox(q: string, filter: "all" | "todo" | "unread", offset: number): Promise<{ ok: true; rows: InboxRow[] } | { ok: false; error: string }> {
-  if (typeof q !== "string" || !["all", "todo", "unread"].includes(filter) || typeof offset !== "number") {
+export async function loadInbox(q: string, filter: "all" | "todo" | "unread" | "mine", offset: number): Promise<{ ok: true; rows: InboxRow[] } | { ok: false; error: string }> {
+  if (typeof q !== "string" || !["all", "todo", "unread", "mine"].includes(filter) || typeof offset !== "number") {
     return { ok: false, error: "ข้อมูลไม่ถูกต้อง" };
   }
   const sb = await supabaseServer();
