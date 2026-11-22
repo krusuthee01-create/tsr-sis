@@ -1,5 +1,5 @@
 // ข้อมูลหน้าหนังสือและฟังก์ชันล้วน (ใช้ได้ทั้งเซิร์ฟเวอร์/เบราว์เซอร์ และทดสอบด้วย node ได้)
-import type { BookStatus, DocType, FileKind, SarabanRole, Urgency } from "./types.ts";
+import { DOC_TYPE_LABEL, URGENCY_LABEL, type BookStatus, type DocType, type FileKind, type SarabanRole, type Urgency } from "./types.ts";
 
 export type BookFile = { id: string; kind: FileKind; version: number; name: string; size_bytes: number; created_at: string };
 export type BookAction = {
@@ -176,3 +176,29 @@ export function parseNote(v: unknown): string | null {
   if (typeof v !== "string") return null;
   return v.trim().slice(0, 1000);
 }
+
+// ---------- ทะเบียนหนังสือรับ (แบบตามระเบียบงานสารบรรณ) ----------
+export type RegistryBook = {
+  year: number; receive_no: number; doc_no: string | null; doc_date: string | null; from_org: string; to_text: string | null;
+  subject: string; urgency: number; secret: boolean; status: BookStatus; doc_type: DocType; received_at: string;
+};
+
+/** ช่อง "การปฏิบัติ": ขั้นล่าสุดของหนังสือ */
+export function registryAction(status: BookStatus, holderName: string | null, recipientNames: string[]): string {
+  if (status === "assigned") return recipientNames.length ? `มอบ ${recipientNames.join(", ")}` : "มอบหมายแล้ว";
+  if (status === "endorsed") return holderName ? `มอบ ${holderName}` : "มอบหัวหน้ากลุ่มงาน";
+  if (status === "proposed") return "เสนอ ผอ.";
+  if (status === "closed") return "จัดเก็บ";
+  return "ลงรับ";
+}
+
+/** ช่อง "หมายเหตุ": ลับ / ชั้นความเร็ว / ชนิดหนังสือที่ไม่ใช่หนังสือภายนอก */
+export function registryRemark(b: Pick<RegistryBook, "secret" | "urgency" | "doc_type">): string {
+  const out: string[] = [];
+  if (b.secret) out.push("ลับ");
+  if (b.urgency > 0) out.push(URGENCY_LABEL[b.urgency as Urgency]);
+  if (b.doc_type && b.doc_type !== "external") out.push(DOC_TYPE_LABEL[b.doc_type] ?? "");
+  return out.filter(Boolean).join(" · ");
+}
+
+export const REGISTRY_HEAD = ["เลขทะเบียนรับ", "ที่", "ลงวันที่", "จาก", "ถึง", "เรื่อง", "การปฏิบัติ", "หมายเหตุ"] as const;
