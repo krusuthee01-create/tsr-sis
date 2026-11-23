@@ -1,7 +1,7 @@
 // งาน PDF ฝั่งเบราว์เซอร์ที่ใช้ร่วมกัน: ตรวจไฟล์ แนบ+ประทับตรารับ (หน้าลงรับ / แนบไฟล์อีกครั้ง) และลงนามคำเกษียน
 import { withBase } from "@/lib/base-path";
 import { MAX_UPLOAD_BYTES } from "@/lib/saraban/types";
-import { receiveStampBox } from "@/lib/saraban/register";
+import { qrBox, receiveStampBox } from "@/lib/saraban/register";
 import { A4, endorsementPlacement, placeAtTap, safeMessage, type PlaceBox } from "@/lib/saraban/book";
 import { uploadPdf } from "./upload";
 
@@ -36,21 +36,22 @@ export async function readPdf(file: File): Promise<Picked> {
 /** ตำแหน่งตรารับที่ผู้ลงรับเลือก: หน้า + มุมซ้ายบน (สัดส่วนของหน้า 0–1) — ไม่ระบุ = มุมขวาบนหน้าแรก */
 export type StampSpot = { page: number; fx: number; fy: number };
 
-/** วาดตรารับ + QR แล้วฝังตามตำแหน่งที่เลือก (ค่าเริ่มต้นมุมขวาบนของหน้าแรก) */
+/** วาดตรารับฝังตามตำแหน่งที่เลือก (ค่าเริ่มต้นมุมขวาบนของหน้าแรก) และ QR ลิงก์หนังสือที่มุมซ้ายบนของหน้าแรก */
 async function stampPdf(bytes: Uint8Array, s: StampInfo, spot?: StampSpot) {
   // โหลดเฉพาะตอนใช้ (canvas/pdf-lib ไม่ต้องอยู่ในหน้าแรกของ bundle)
-  const [{ drawReceiveStamp }, { receiveStampLines, pngSizePt, embedPng }, { PDFDocument }] = await Promise.all([
+  const [{ drawReceiveStamp, drawQrCode }, { receiveStampLines, pngSizePt, embedPng }, { PDFDocument }] = await Promise.all([
     import("@/lib/saraban/stamp-canvas"),
     import("@/lib/saraban/stamp"),
     import("pdf-lib"),
   ]);
   const lines = receiveStampLines({ schoolName: s.schoolName, receiveNo: s.receiveNo, year: s.year, receivedAt: s.receivedAt });
-  const png = await drawReceiveStamp(lines, location.origin + withBase("/saraban/book/" + s.bookId));
+  const [png, qr] = await Promise.all([drawReceiveStamp(lines), drawQrCode(location.origin + withBase("/saraban/book/" + s.bookId))]);
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const pt = pngSizePt(png);
   const page = spot && spot.page >= 0 && spot.page < doc.getPageCount() ? spot.page : 0;
   const box = spot ? placeAtTap(spot, doc.getPage(page).getSize(), pt, page) : receiveStampBox(doc.getPage(0).getSize(), pt);
-  return embedPng(bytes, png, box);
+  const stamped = await embedPng(bytes, png, box);
+  return embedPng(stamped, qr, qrBox(doc.getPage(0).getSize()));
 }
 
 /**
@@ -64,7 +65,7 @@ export async function prepareReceiveStamp(pdf: Picked, schoolName: string): Prom
     import("pdf-lib"),
   ]);
   const lines = receiveStampLines({ schoolName, receiveNo: 8888, year: 2569, receivedAt: new Date().toISOString() });
-  const png = await drawReceiveStamp(lines, location.origin + withBase("/saraban"));
+  const png = await drawReceiveStamp(lines);
   const doc = await PDFDocument.load(pdf.bytes, { ignoreEncryption: true });
   const pages = doc.getPages().map((p) => p.getSize());
   const png_pt = pngSizePt(png);

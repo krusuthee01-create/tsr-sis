@@ -13,7 +13,7 @@ import { formatReminderBody } from "../src/lib/saraban/push-text.ts";
 import { embedPng, endorsementLines, pngSizePt, receiveStampLines } from "../src/lib/saraban/stamp.ts";
 import { PDFDocument } from "pdf-lib";
 import { formatLineMessage, pushLineGroup } from "../src/lib/saraban/line.ts";
-import { isIsoDate, parseRegisterInput, receiveStampBox, validateRegister } from "../src/lib/saraban/register.ts";
+import { isIsoDate, parseRegisterInput, receiveStampBox, validateRegister, qrBox } from "../src/lib/saraban/register.ts";
 import { A4, endorsementPlacement, hasNoteLine, isUuid, placeAtTap, registryAction, registryRemark, toggleNoteLine, latestFile, parseNote, parseTargets, safeMessage, siteOrigin } from "../src/lib/saraban/book.ts";
 
 const b64urlJson = (s: string) => JSON.parse(Buffer.from(s, "base64url").toString("utf8"));
@@ -798,4 +798,11 @@ test("endorsementPlacement: วางที่หน้าที่กำหน�
   assert.equal(endorsementPlacement(page, { width: 150, height: 60 }, 4, { side: "left", pageIndex: 3 }).box.page, 3);
   assert.equal(endorsementPlacement(page, { width: 150, height: 60 }, 2, { pageIndex: 9 }).box.page, 1);
   assert.equal(endorsementPlacement(page, { width: 150, height: 60 }, 2).box.page, 0);
+});
+
+test("qrBox: มุมซ้ายบนหน้าแรก เว้นขอบ 14pt ขนาด 50pt · หน้าเล็กย่อให้พอดี", () => {
+  assert.deepEqual(qrBox({ width: 595, height: 842 }), { page: 0, x: 14, y: 842 - 50 - 14, width: 50, height: 50 });
+  const small = qrBox({ width: 60, height: 300 });
+  assert.equal(small.width, 32);
+  assert.equal(small.x, 14);
 });
