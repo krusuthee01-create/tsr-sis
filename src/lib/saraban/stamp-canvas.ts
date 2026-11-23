@@ -29,19 +29,29 @@ function toPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
   });
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("โหลดภาพไม่สำเร็จ"));
-    img.src = src;
-  });
+/**
+ * วาด QR ทีละโมดูลลง canvas (หน่วย point หลัง ctx.scale) ขอบโมดูลปัดลงพิกเซลจริง ภาพจึงคมแม้ QR เล็ก
+ * ระดับแก้ผิด M: ลิงก์หนังสือ (~80 ตัวอักษร) ได้ QR 37×37 โมดูล ≈ 1.2 pt (0.4 มม.) ต่อโมดูลที่ขนาด 44 pt
+ */
+function drawQr(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number) {
+  const q = QRCode.create(text, { errorCorrectionLevel: "M" });
+  const n = q.modules.size;
+  const px = (v: number) => Math.round(v * STAMP_SCALE) / STAMP_SCALE; // ขอบตรงพิกเซล
+  const m = size / n;
+  ctx.fillStyle = INK;
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      if (!q.modules.get(r, c)) continue;
+      const x0 = px(x + c * m), y0 = px(y + r * m);
+      ctx.fillRect(x0, y0, px(x + (c + 1) * m) - x0, px(y + (r + 1) * m) - y0);
+    }
+  }
 }
 
-/** ตรารับ: กรอบสี่เหลี่ยม ข้อความสีน้ำเงิน และ QR ทางซ้าย */
+/** ตรารับขนาดเท่าตรายางทั่วไป (~150×54 pt): กรอบ ข้อความสีน้ำเงิน 4 บรรทัด และ QR 44 pt ทางซ้าย */
 export async function drawReceiveStamp(lines: string[], qrUrl: string): Promise<Uint8Array> {
   const family = fontFamily();
-  const fs = 14, lh = 20, pad = 10, qr = 76;
+  const fs = 9, lh = 11.5, pad = 4, qr = 44;
   await loadFont(family, fs, lines.join(" "));
   const measure = document.createElement("canvas").getContext("2d")!;
   // วัดด้วยฟอนต์เดียวกับที่วาด (บรรทัดแรกตัวหนา)
@@ -58,11 +68,10 @@ export async function drawReceiveStamp(lines: string[], qrUrl: string): Promise<
   const ctx = canvas.getContext("2d")!;
   ctx.scale(STAMP_SCALE, STAMP_SCALE);
   ctx.strokeStyle = INK;
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(1, 1, w - 2, h - 2);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
 
-  const qrImg = await loadImage(await QRCode.toDataURL(qrUrl, { margin: 0, scale: STAMP_SCALE * 4, color: { dark: INK, light: "#0000" } }));
-  ctx.drawImage(qrImg, pad, (h - qr) / 2, qr, qr);
+  drawQr(ctx, qrUrl, pad, (h - qr) / 2, qr);
 
   ctx.fillStyle = INK;
   ctx.textBaseline = "middle";
