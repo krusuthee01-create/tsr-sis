@@ -192,16 +192,25 @@ service account ไม่มีพื้นที่ Drive ของตัวเ
 8. ทดสอบ: ลงรับหนังสือทดสอบ ชั้นความเร็ว **ด่วนที่สุด** › เสนอ › ผอ. สั่งการ (มอบหัวหน้าหรือครู) › ต้องมีข้อความเข้ากลุ่ม
 
 ### 6.4 แจ้งเตือนบนมือถือ (Web Push) และงานตั้งเวลา
-1. ในเครื่องที่มี Node.js: `npx web-push generate-vapid-keys` ได้ Public Key และ Private Key
-   - Public Key → `NEXT_PUBLIC_VAPID_PUBLIC_KEY`
-   - Private Key → `VAPID_PRIVATE_KEY` (ความลับ)
-   - `VAPID_SUBJECT` = `mailto:<อีเมลผู้ดูแลระบบ>` (ไม่ตั้ง = `mailto:admin@anubantep.ac.th`)
+1. สร้างกุญแจ: เปิด https://shell.cloud.google.com (Google Cloud Shell มี Node.js อยู่แล้ว ไม่ต้องติดตั้งในเครื่อง)
+   แล้วรัน `npx --yes web-push generate-vapid-keys` ได้ Public Key (ยาว ~87 ตัว) และ Private Key (~43 ตัว)
+   ใส่ใน Vercel › Settings › Environment Variables (Production):
+   - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` = Public Key — Type **Config** (ค่านี้ถูกฝังในหน้าเว็บอยู่แล้ว Vercel จะเตือนถ้าเลือก Secret)
+   - `VAPID_PRIVATE_KEY` = Private Key — Type **Secret** (ห้ามส่งในแชต/อีเมล)
+   - `VAPID_SUBJECT` = `mailto:<อีเมลผู้ดูแลระบบ>` — Type Config (ไม่ตั้ง = `mailto:admin@anubantep.ac.th`)
+   - ระวังช่องว่าง/ขึ้นบรรทัดใหม่ติดมาตอนวาง และอย่าสลับ Public/Private
    - สร้างครั้งเดียว ถ้าเปลี่ยนคีย์ ทุกคนต้องกด "เปิดการแจ้งเตือน" ใหม่
+   - **ต้อง deploy ใหม่หลังใส่ค่า** (`NEXT_PUBLIC_...` ถูกฝังตอน build): Deployments › ⋯ › Redeploy (เอาเครื่องหมาย "Use existing Build Cache" ออก)
+     หรือ merge การแก้ไขใดๆ เข้า `main` — Vercel deploy ให้อัตโนมัติ (ใช้ได้แม้เข้าหน้า Vercel ไม่ได้)
+   - ตรวจว่าใช้ได้: สารบรรณ › ตั้งค่า › "การแจ้งเตือนบนอุปกรณ์นี้" กดเปิดได้และขึ้น "เปิดการแจ้งเตือนแล้ว"
 2. `CRON_SECRET` = ข้อความสุ่มยาว ๆ เช่นผลของ `openssl rand -hex 32`
    Vercel Cron (ตั้งไว้ใน `vercel.json`: วันจันทร์–ศุกร์ 07:00 น. เวลาไทย) ส่งค่านี้ให้ `/sis/saraban/api/cron/reminders` เองอัตโนมัติเมื่อตั้งเป็น Environment Variable
    ไม่ตั้ง = งานเตือนหนังสือใกล้ครบกำหนดตอบ 401 ไม่ทำงาน
 3. `NEXT_PUBLIC_SITE_URL` = ที่อยู่หลักที่ครูเปิด เช่น `https://gotime.anubantep.ac.th` (ไม่ต้องใส่ `/sis`) ใช้สร้างลิงก์ในข้อความ LINE
 4. iPhone: ครูต้อง "เพิ่มไปยังหน้าจอโฮม" แล้วเปิดจากไอคอนก่อน จึงจะเปิดการแจ้งเตือนได้ (ข้อจำกัดของ iOS)
+
+> **บัญชี Vercel:** ถ้าเปิดยืนยัน 2 ขั้น (2FA) ให้เก็บรหัสกู้คืน (recovery codes) ไว้ในที่ปลอดภัย และเพิ่มผู้ดูแลอีกอย่างน้อย 1 คนในทีม Vercel
+> ถ้าเสียทั้งแอปยืนยันตัวตนและรหัสกู้คืน ติดต่อ https://vercel.com/help แจ้ง "lost access to 2FA" — ระหว่างนั้นระบบยังทำงานได้ และยัง deploy ผ่านการ merge เข้า `main` ได้
 
 ### 6.5 สรุปค่าที่ต้องตั้ง
 | ชื่อ | ค่า | ความลับ |
