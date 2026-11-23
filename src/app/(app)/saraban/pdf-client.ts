@@ -149,9 +149,11 @@ export async function prepareEndorsement(
   return { bytes, png, png_pt: pngSizePt(png), pages: doc.getPages().map((p) => p.getSize()) };
 }
 
-/** ตำแหน่งเริ่มต้น (ก่อนผู้ลงนามแตะเลือก): มุมล่างซ้าย/ขวาของหน้าแรก หรือหน้า A4 ใหม่ท้ายไฟล์ */
+/** ตำแหน่งเริ่มต้น (ก่อนผู้ลงนามแตะเลือก): มุมล่างซ้าย/ขวาของหน้าสุดท้าย หรือหน้า A4 ใหม่ท้ายไฟล์ */
 export function defaultPlacement(p: PreparedEndorsement, place: { side: "left" | "right"; newPage?: boolean }) {
-  return endorsementPlacement(p.pages[0], p.png_pt, p.pages.length, place);
+  // ค่าเริ่มต้น: ท้ายหน้าสุดท้าย (ที่ว่างใต้ลงชื่อของหนังสือ) — แตะเลือกหน้าอื่นได้
+  const last = p.pages.length - 1;
+  return endorsementPlacement(p.pages[last], p.png_pt, p.pages.length, { ...place, pageIndex: last });
 }
 
 /** ฝังคำเกษียนตามตำแหน่งที่เลือก (appendPage = เพิ่มหน้า A4 ท้ายไฟล์ก่อน) แล้วอัปโหลดเป็นฉบับ stamped — คืน fileId ใหม่ */

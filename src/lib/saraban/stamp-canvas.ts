@@ -83,10 +83,13 @@ export async function drawReceiveStamp(lines: string[], qrUrl: string): Promise<
   return toPng(canvas);
 }
 
-/** คำเกษียน: ข้อความหลายบรรทัด (ชื่อ/ตำแหน่ง/วันที่อยู่ท้าย) และลายเซ็นคั่นเหนือชื่อ */
+/**
+ * คำเกษียน: ข้อความหลายบรรทัด (ชื่อ/วันที่อยู่ท้าย) และลายเซ็นคั่นเหนือชื่อ
+ * ขนาดเท่าลายมือเกษียนบนกระดาษ: ตัวอักษร 9 pt บรรทัดละ ~34 ตัว (กว้าง ~150 pt) ลายเซ็นสูง 26 pt
+ */
 export async function drawEndorsement(lines: string[], signature?: ImageBitmap): Promise<Uint8Array> {
   const family = fontFamily();
-  const fs = 14, lh = 20, pad = 8, sigH = 44;
+  const fs = 9, lh = 11.5, pad = 3, sigH = 26;
   await loadFont(family, fs, lines.join(" "));
   const measure = document.createElement("canvas").getContext("2d")!;
   measure.font = `400 ${fs}px ${family}`;
@@ -109,7 +112,7 @@ export async function drawEndorsement(lines: string[], signature?: ImageBitmap):
   lines.forEach((l, i) => {
     if (i === bodyCount && signature) {
       // ย่อด้วยตัวคูณเดียวกันทั้งกว้างและสูง ไม่ให้ภาพเพี้ยนสัดส่วน
-      const k = Math.min((w - pad * 2) / signature.width, (sigH - 4) / signature.height);
+      const k = Math.min((w - pad * 2) / signature.width, (sigH - 2) / signature.height);
       const sw = signature.width * k;
       const sh = signature.height * k;
       ctx.drawImage(signature, (w - sw) / 2, y, sw, sh);

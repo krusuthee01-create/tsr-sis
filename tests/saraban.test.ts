@@ -264,7 +264,7 @@ test("คำเกษียน: ตัดบรรทัดไม่เกิน
   const l = endorsementLines({ note, signerName: "นายสมชาย ใจดี", position: "ผู้อำนวยการ", date: "2026-10-22" });
   const body = l.slice(0, -2);
   assert.ok(body.length > 1);
-  assert.ok(body.every((x) => [...x].length <= 48));
+  assert.ok(body.every((x) => [...x].length <= 34));
   assert.deepEqual(l.slice(-2), ["นายสมชาย ใจดี", "๒๒/๑๐/๒๕๖๙"]);
 });
 
@@ -295,10 +295,10 @@ test("คำเกษียน: ประโยคไทยไม่มีช่
   const note = "ขอเชิญคณะครูและบุคลากรทางการศึกษาทุกท่านเข้าร่วมประชุมเพื่อชี้แจงแนวทางการดำเนินงานตามนโยบายของสำนักงานเขตพื้นที่การศึกษา";
   const l = endorsementLines({ note, signerName: "ก", position: "ข", date: "2026-10-22" });
   const body = l.slice(0, -2);
-  assert.ok([...note].length > 48 && body.length >= 2);
+  assert.ok([...note].length > 34 && body.length >= 2);
   assert.equal(body.join(""), note);
   for (const x of body) {
-    assert.ok([...x].length <= 48, x);
+    assert.ok([...x].length <= 34, x);
     assert.ok(!/^[\u0E2F\u0E30-\u0E3A\u0E45-\u0E4E]/.test(x), x);
     assert.ok(!/[\u0E40-\u0E44]$/.test(x), x);
   }
@@ -791,4 +791,11 @@ test("sarabanStats นับรายเดือน เวลาสั่งก
   assert.equal(s.read, 1);
   assert.equal(s.readHours, 2);
   assert.equal(s.unreadOver2Days, 1);
+});
+
+test("endorsementPlacement: วางที่หน้าที่กำหนด (ค่าเริ่มต้นของระบบคือหน้าสุดท้าย) และไม่เกินจำนวนหน้า", () => {
+  const page = { width: 595, height: 842 };
+  assert.equal(endorsementPlacement(page, { width: 150, height: 60 }, 4, { side: "left", pageIndex: 3 }).box.page, 3);
+  assert.equal(endorsementPlacement(page, { width: 150, height: 60 }, 2, { pageIndex: 9 }).box.page, 1);
+  assert.equal(endorsementPlacement(page, { width: 150, height: 60 }, 2).box.page, 0);
 });

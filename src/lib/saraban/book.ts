@@ -69,7 +69,7 @@ export function endorsementPlacement(
   page: { width: number; height: number },
   png: { width: number; height: number },
   pageCount: number,
-  opts: { side?: "left" | "right"; newPage?: boolean; margin?: number } = {},
+  opts: { side?: "left" | "right"; newPage?: boolean; margin?: number; pageIndex?: number } = {},
 ): { appendPage: boolean; box: { page: number; x: number; y: number; width: number; height: number } } {
   const margin = opts.margin ?? 18;
   const left = opts.side === "left";
@@ -82,7 +82,8 @@ export function endorsementPlacement(
   const k = Math.min(1, (page.width - margin * 2) / png.width);
   const width = png.width * k, height = png.height * k;
   const x = left ? margin : page.width - width - margin;
-  return { appendPage: false, box: { page: 0, x, y: margin, width, height } };
+  const index = Math.min(Math.max(opts.pageIndex ?? 0, 0), Math.max(pageCount - 1, 0));
+  return { appendPage: false, box: { page: index, x, y: margin, width, height } };
 }
 
 export type PlaceBox = { page: number; x: number; y: number; width: number; height: number };
