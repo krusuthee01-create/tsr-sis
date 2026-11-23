@@ -202,7 +202,7 @@ export function RegisterForm({ schoolName }: { schoolName: string }) {
         {picked && !picked.encrypted && (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2">
             <span className="text-sm">
-              ตำแหน่งตรารับ: <strong>{stamp?.custom ? `หน้า ${stamp.box.page + 1} (เลือกเอง)` : "มุมขวาบน หน้า 1"}</strong> <span className="text-muted">· QR ลิงก์หนังสืออยู่มุมซ้ายบนหน้า 1</span>
+              ตำแหน่งตรารับ: <strong>{stamp?.custom ? `หน้า ${stamp.box.page + 1} (เลือกเอง)` : "มุมขวาบน หน้า 1"}</strong>
             </span>
             <Button type="button" variant="secondary" disabled={busy} onClick={openPlacement}>
               <Crosshair size={18} weight="bold" /> เลือกตำแหน่ง

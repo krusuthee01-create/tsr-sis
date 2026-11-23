@@ -33,12 +33,12 @@ function toPng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
  * วาด QR ทีละโมดูลลง canvas (หน่วย point หลัง ctx.scale) ขอบโมดูลปัดลงพิกเซลจริง ภาพจึงคมแม้ QR เล็ก
  * ระดับแก้ผิด M: ลิงก์หนังสือ (~80 ตัวอักษร) ได้ QR 37×37 โมดูล ≈ 1.2 pt (0.4 มม.) ต่อโมดูลที่ขนาด 44 pt
  */
-function drawQr(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, ink = INK) {
+function drawQr(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number) {
   const q = QRCode.create(text, { errorCorrectionLevel: "M" });
   const n = q.modules.size;
   const px = (v: number) => Math.round(v * STAMP_SCALE) / STAMP_SCALE; // ขอบตรงพิกเซล
   const m = size / n;
-  ctx.fillStyle = ink;
+  ctx.fillStyle = INK;
   for (let r = 0; r < n; r++) {
     for (let c = 0; c < n; c++) {
       if (!q.modules.get(r, c)) continue;
@@ -49,19 +49,19 @@ function drawQr(ctx: CanvasRenderingContext2D, text: string, x: number, y: numbe
 }
 
 /**
- * ตรารับขนาดเท่าตรายางของโรงเรียน (เทียบจากหนังสือจริง: กรอบ ~159×74 pt ข้อความ Sarabun ~9.5 pt บรรทัดห่าง ~16.5 pt)
- * ชื่อโรงเรียน + รับที่/วันที่/เวลา มีเส้นประใต้ค่าแบบตรายาง · QR แยกไปมุมซ้ายบนของหน้าแรก (drawQrCode) แบบระบบเดิม
+ * ตรารับขนาดเท่าตรายางของโรงเรียน (เทียบจากหนังสือจริง: กรอบสูง ~74 pt ข้อความ Sarabun ~9.5 pt บรรทัดห่าง ~16.5 pt)
+ * ชื่อโรงเรียน + รับที่/วันที่/เวลา มีเส้นประใต้ค่าแบบตรายาง · QR 52 pt ทางซ้าย (≈0.5 มม. ต่อโมดูล สแกนง่าย)
  */
-export async function drawReceiveStamp(lines: string[]): Promise<Uint8Array> {
+export async function drawReceiveStamp(lines: string[], qrUrl: string): Promise<Uint8Array> {
   const family = fontFamily();
-  const fs = 9.5, lh = 16.5, padX = 8, padY = 4;
+  const fs = 9.5, lh = 16.5, pad = 4, gap = 6, qr = 52;
   await loadFont(family, fs, lines.join(" "));
   const font = `400 ${fs}px ${family}`;
   const measure = document.createElement("canvas").getContext("2d")!;
   measure.font = font;
   const textW = Math.max(...lines.map((l) => measure.measureText(l).width)) + 6;
-  const w = Math.ceil(padX * 2 + textW);
-  const h = Math.ceil(padY * 2 + lines.length * lh);
+  const w = Math.ceil(pad * 2 + qr + gap + textW);
+  const h = Math.ceil(Math.max(pad * 2 + lines.length * lh, pad * 2 + qr));
 
   const canvas = document.createElement("canvas");
   canvas.width = w * STAMP_SCALE;
@@ -72,12 +72,15 @@ export async function drawReceiveStamp(lines: string[]): Promise<Uint8Array> {
   ctx.lineWidth = 1.25;
   ctx.strokeRect(0.625, 0.625, w - 1.25, h - 1.25);
 
+  drawQr(ctx, qrUrl, pad, (h - qr) / 2, qr);
+
   ctx.fillStyle = INK;
   ctx.textBaseline = "middle";
   ctx.font = font;
-  const x0 = padX, right = w - padX;
+  const x0 = pad + qr + gap, right = w - pad;
+  const top = (h - lines.length * lh) / 2;
   lines.forEach((l, i) => {
-    const cy = padY + i * lh + lh / 2;
+    const cy = top + i * lh + lh / 2;
     ctx.fillText(l, x0, cy);
     // เส้นประใต้ค่า (หลังคำนำ "รับที่ / วันที่ / เวลา") แบบตรายาง
     const sp = l.indexOf(" ");
@@ -92,23 +95,6 @@ export async function drawReceiveStamp(lines: string[]): Promise<Uint8Array> {
     ctx.stroke();
     ctx.restore();
   });
-  return toPng(canvas);
-}
-
-/**
- * QR ลิงก์หนังสือ (สีดำบนพื้นขาว มีขอบว่างรอบ ให้สแกนได้แม้วางบนพื้นที่มีลาย) ขนาดรวม size pt — แบบระบบเดิมที่มุมซ้ายบน
- * ลิงก์ ~80 ตัวอักษร ระดับแก้ผิด M ได้ 37×37 โมดูล ≈ 1.2 pt (0.43 มม.) ต่อโมดูลที่ 50 pt
- */
-export async function drawQrCode(url: string, size = 50): Promise<Uint8Array> {
-  const quiet = size * 0.06;
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(size * STAMP_SCALE);
-  canvas.height = Math.round(size * STAMP_SCALE);
-  const ctx = canvas.getContext("2d")!;
-  ctx.scale(STAMP_SCALE, STAMP_SCALE);
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, size, size);
-  drawQr(ctx, url, quiet, quiet, size - quiet * 2, "#000");
   return toPng(canvas);
 }
 

@@ -83,9 +83,3 @@ export function receiveStampBox(page: { width: number; height: number }, stamp: 
   const width = stamp.width * k, height = stamp.height * k;
   return { page: 0, x: page.width - width - margin, y: page.height - height - margin, width, height };
 }
-
-/** QR ลิงก์หนังสือ: มุมซ้ายบนของหน้าแรก เว้นขอบ 14pt (แบบระบบเดิมของโรงเรียน) — หน้าเล็กมากย่อให้พอดี */
-export function qrBox(page: { width: number; height: number }, size = 50, margin = 14) {
-  const s = Math.min(size, page.width - margin * 2, page.height - margin * 2);
-  return { page: 0, x: margin, y: page.height - s - margin, width: s, height: s };
-}
