@@ -85,11 +85,11 @@ export async function drawReceiveStamp(lines: string[], qrUrl: string): Promise<
 
 /**
  * คำเกษียน: ข้อความหลายบรรทัด (ชื่อ/วันที่อยู่ท้าย) และลายเซ็นคั่นเหนือชื่อ
- * ตัวอักษร 14 pt บรรทัดละไม่เกิน ~34 ตัว (กว้าง ~7 ซม.) ยาวกว่านั้นขึ้นบรรทัดใหม่ ลายเซ็นสูง 32 pt
+ * ตัวอักษร Sarabun 10.5 pt (เท่า TH Sarabun New 14 pt ใน Word) บรรทัดละไม่เกิน ~34 ตัว ยาวกว่านั้นขึ้นบรรทัดใหม่ ลายเซ็นสูง 28 pt
  */
 export async function drawEndorsement(lines: string[], signature?: ImageBitmap): Promise<Uint8Array> {
   const family = fontFamily();
-  const fs = 14, lh = 17, pad = 3, sigH = 32;
+  const fs = 10.5, lh = 13, pad = 3, sigH = 28;
   await loadFont(family, fs, lines.join(" "));
   const measure = document.createElement("canvas").getContext("2d")!;
   measure.font = `400 ${fs}px ${family}`;
