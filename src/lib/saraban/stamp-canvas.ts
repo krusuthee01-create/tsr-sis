@@ -85,11 +85,11 @@ export async function drawReceiveStamp(lines: string[], qrUrl: string): Promise<
 
 /**
  * คำเกษียน: ข้อความหลายบรรทัด (ชื่อ/วันที่อยู่ท้าย) และลายเซ็นคั่นเหนือชื่อ
- * ขนาดเท่าลายมือเกษียนบนกระดาษ: ตัวอักษร 9 pt บรรทัดละ ~34 ตัว (กว้าง ~150 pt) ลายเซ็นสูง 26 pt
+ * ตัวอักษร 14 pt บรรทัดละไม่เกิน ~34 ตัว (กว้าง ~7 ซม.) ยาวกว่านั้นขึ้นบรรทัดใหม่ ลายเซ็นสูง 32 pt
  */
 export async function drawEndorsement(lines: string[], signature?: ImageBitmap): Promise<Uint8Array> {
   const family = fontFamily();
-  const fs = 9, lh = 11.5, pad = 3, sigH = 26;
+  const fs = 14, lh = 17, pad = 3, sigH = 32;
   await loadFont(family, fs, lines.join(" "));
   const measure = document.createElement("canvas").getContext("2d")!;
   measure.font = `400 ${fs}px ${family}`;
