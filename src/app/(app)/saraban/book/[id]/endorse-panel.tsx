@@ -219,12 +219,12 @@ function useSigner(detail: BookDetail, me: Me) {
 type Signer = ReturnType<typeof useSigner>;
 
 /** ส่วนเลือกตำแหน่งในแผ่นยืนยัน */
-function PlacementSection({ signer }: { signer: Signer }) {
+function PlacementSection({ signer, what = "คำเกษียน" }: { signer: Signer; what?: string }) {
   const p = signer.prep;
-  if (p.state === "loading") return <p className="rounded-xl bg-slate-50 px-3 py-6 text-center text-muted">กำลังเตรียมคำเกษียนและหน้าเอกสาร…</p>;
+  if (p.state === "loading") return <p className="rounded-xl bg-slate-50 px-3 py-6 text-center text-muted">กำลังเตรียม{what}และหน้าเอกสาร…</p>;
   if (p.state === "none") return <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">{p.reason}</p>;
   if (p.state !== "ready") return null;
-  return <PlacementPicker prepared={p.prepared} value={p.place} onChange={signer.setPlace} />;
+  return <PlacementPicker prepared={p.prepared} value={p.place} onChange={signer.setPlace} what={what} />;
 }
 
 function SignatureHint({ signature }: { signature: Blob | null | undefined }) {
@@ -376,13 +376,14 @@ function DirectorPanel({ detail, me, staff, presets }: { detail: BookDetail; me:
 }
 
 /** แผ่นยืนยันที่ใช้ร่วม (ธุรการ/หัวหน้า): วางตำแหน่ง แล้วยืนยัน */
-function SignSheet({ open, onClose, title, signer, step, onConfirm, children }: {
+function SignSheet({ open, onClose, title, signer, step, onConfirm, children, what }: {
   open: boolean; onClose: () => void; title: string; signer: Signer; step: string | null; onConfirm: () => void; children?: React.ReactNode;
+  /** ชื่อสิ่งที่วาง (คำเสนอ / ข้อความมอบหมาย) */ what?: string;
 }) {
   return (
     <Sheet open={open} wide onClose={() => { if (!step) onClose(); }} title={title}>
       <div className="flex flex-col gap-3">
-        <PlacementSection signer={signer} />
+        <PlacementSection signer={signer} what={what} />
         {children}
         <div className="sticky bottom-0 flex flex-col gap-2 bg-white pt-1">
           <Button size="lg" className="w-full" disabled={!!step || signer.prep.state === "loading"} onClick={onConfirm}>
@@ -440,7 +441,7 @@ function ClerkPanel({ detail, me, presets }: { detail: BookDetail; me: Me; prese
       <Button size="lg" className="w-full" disabled={!note.trim()} onClick={() => { setOpen(true); signer.prepare(note, { side: "left" }); }}>
         เสนอ ผอ.
       </Button>
-      <SignSheet open={open} onClose={() => setOpen(false)} title="วางคำเสนอและยืนยัน" signer={signer} step={step} onConfirm={confirm} />
+      <SignSheet open={open} onClose={() => setOpen(false)} title="วางคำเสนอและยืนยัน" what="คำเสนอ" signer={signer} step={step} onConfirm={confirm} />
     </Card>
   );
 }
@@ -492,7 +493,7 @@ function HeadPanel({ detail, me, staff, presets }: { detail: BookDetail; me: Me;
         onClick={() => { setOpen(true); signer.prepare(note, { side: "left", newPage: true }); }}>
         {`มอบหมาย${picked.length ? ` (${picked.length} คน)` : ""}`}
       </Button>
-      <SignSheet open={open} onClose={() => setOpen(false)} title="วางข้อความและยืนยันมอบหมาย" signer={signer} step={step} onConfirm={confirm}>
+      <SignSheet open={open} onClose={() => setOpen(false)} title="วางข้อความและยืนยันมอบหมาย" what="ข้อความมอบหมาย" signer={signer} step={step} onConfirm={confirm}>
         <p className="text-sm"><span className="text-muted">ผู้รับ ({picked.length} คน): </span>{members.filter((m) => picked.includes(m.id)).map((m) => m.name).join(", ")}</p>
       </SignSheet>
     </Card>
