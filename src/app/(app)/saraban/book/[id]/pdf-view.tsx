@@ -66,7 +66,7 @@ function PdfPages({ url, title }: { url: string; title: string }) {
         tasks.push(task);
         await task.promise.catch(() => {});
       }
-    })();
+    })().catch(() => {}); // ออกจากหน้าระหว่างวาด: pdf.js ถูกปิดแล้ว (Transport destroyed) ไม่ต้องแจ้ง
     return () => { alive = false; tasks.forEach((t) => t.cancel()); };
   }, [doc, title]);
 
