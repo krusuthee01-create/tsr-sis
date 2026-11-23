@@ -84,6 +84,17 @@ export function PlacementPicker({ prepared, value, onChange, what = "คำเ�
       <p className="rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-900">
         แตะตรง<strong>พื้นที่ว่าง</strong>ในเอกสารเพื่อวาง{what} (จุดที่แตะคือมุมซ้ายบน) · ตำแหน่งที่วางไว้ใช้ได้ กดยืนยันได้เลย
       </p>
+      {total > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={`เลือกหน้าที่จะวาง${what}`}>
+          <span className="text-sm font-semibold text-muted">วางที่หน้า</span>
+          {prepared.pages.map((_, i) => (
+            <button key={i} type="button" aria-pressed={view === i} onClick={() => setView(i)}
+              className={`flex size-11 items-center justify-center rounded-xl border-[1.5px] font-semibold ${view === i ? "border-navy-700 bg-navy-700 text-white" : "border-slate-300 bg-white"} ${!value.appendPage && value.box.page === i ? "ring-2 ring-sky-400 ring-offset-1" : ""}`}>
+              {i + 1}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex items-center justify-between gap-2">
         <button type="button" aria-label="หน้าก่อน" disabled={view === 0} onClick={() => setView((v) => v - 1)}
           className="flex size-11 items-center justify-center rounded-xl border-[1.5px] border-slate-300 disabled:opacity-40"><CaretLeft size={20} /></button>

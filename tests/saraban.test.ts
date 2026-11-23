@@ -264,7 +264,7 @@ test("คำเกษียน: ตัดบรรทัดไม่เกิน
   const l = endorsementLines({ note, signerName: "นายสมชาย ใจดี", position: "ผู้อำนวยการ", date: "2026-10-22" });
   const body = l.slice(0, -2);
   assert.ok(body.length > 1);
-  assert.ok(body.every((x) => [...x].length <= 48));
+  assert.ok(body.every((x) => [...x].length <= 34));
   assert.deepEqual(l.slice(-2), ["นายสมชาย ใจดี", "๒๒/๑๐/๒๕๖๙"]);
 });
 
@@ -295,10 +295,10 @@ test("คำเกษียน: ประโยคไทยไม่มีช่
   const note = "ขอเชิญคณะครูและบุคลากรทางการศึกษาทุกท่านเข้าร่วมประชุมเพื่อชี้แจงแนวทางการดำเนินงานตามนโยบายของสำนักงานเขตพื้นที่การศึกษา";
   const l = endorsementLines({ note, signerName: "ก", position: "ข", date: "2026-10-22" });
   const body = l.slice(0, -2);
-  assert.ok([...note].length > 48 && body.length >= 2);
+  assert.ok([...note].length > 34 && body.length >= 2);
   assert.equal(body.join(""), note);
   for (const x of body) {
-    assert.ok([...x].length <= 48, x);
+    assert.ok([...x].length <= 34, x);
     assert.ok(!/^[\u0E2F\u0E30-\u0E3A\u0E45-\u0E4E]/.test(x), x);
     assert.ok(!/[\u0E40-\u0E44]$/.test(x), x);
   }
@@ -730,4 +730,72 @@ test("บันทึกข้อความ: ตรวจข้อมูล �
   assert.ok(texts.includes("(นางครู ดี)"));
   assert.ok(texts.includes("-๒-"), "เลขหน้าที่ ๒");
   assert.ok(pages[0].some((o) => o.t === "image" && o.key === "garuda"));
+});
+
+// ---------- สรุปสารบรรณรายปี ----------
+import { formatDuration, median, sarabanStats, thaiMonth } from "../src/lib/saraban/stats.ts";
+
+test("thaiMonth ใช้เวลาไทย (31 ม.ค. 20:00 UTC = 1 ก.พ. ไทย)", () => {
+  assert.equal(thaiMonth("2026-01-31T20:00:00Z"), 2);
+  assert.equal(thaiMonth("2026-01-31T10:00:00Z"), 1);
+});
+
+test("median / formatDuration", () => {
+  assert.equal(median([]), null);
+  assert.equal(median([5, 1, 3]), 3);
+  assert.equal(median([4, 1, 3, 2]), 2.5);
+  assert.equal(formatDuration(null), "–");
+  assert.equal(formatDuration(0.5), "30 นาที");
+  assert.equal(formatDuration(5.54), "5.5 ชม.");
+  assert.equal(formatDuration(55), "2.3 วัน");
+});
+
+test("sarabanStats นับรายเดือน เวลาสั่งการ งานค้าง และการอ่าน", () => {
+  const now = new Date("2026-11-20T03:00:00Z");
+  const books = [
+    { id: "a", received_at: "2026-11-02T02:00:00Z", status: "assigned" as const, urgency: 0, doc_type: "external" },
+    { id: "b", received_at: "2026-11-03T02:00:00Z", status: "closed" as const, urgency: 3, doc_type: "internal" },
+    { id: "c", received_at: "2026-11-15T02:00:00Z", status: "proposed" as const, urgency: 0, doc_type: "external" },
+    { id: "d", received_at: "2026-10-30T02:00:00Z", status: "registered" as const, urgency: 2, doc_type: "external" },
+  ];
+  const actions = [
+    { book_id: "a", action: "propose", created_at: "2026-11-02T03:00:00Z" },
+    { book_id: "a", action: "endorse", created_at: "2026-11-02T06:00:00Z" }, // 4 ชม.
+    { book_id: "a", action: "endorse", created_at: "2026-11-09T06:00:00Z" }, // ไม่นับครั้งที่สอง
+    { book_id: "b", action: "close", created_at: "2026-11-04T02:00:00Z" }, // 24 ชม.
+  ];
+  const recipients = [
+    { book_id: "a", assigned_at: "2026-11-02T06:00:00Z", read_at: "2026-11-02T08:00:00Z" },
+    { book_id: "a", assigned_at: "2026-11-02T06:00:00Z", read_at: null }, // ค้างเกิน 2 วัน
+    { book_id: "a", assigned_at: "2026-11-19T06:00:00Z", read_at: null }, // ยังไม่เกิน
+  ];
+  const outgoing = [
+    { series: "out", doc_date: "2026-11-05", deleted_at: null },
+    { series: "memo", doc_date: "2026-11-06", deleted_at: null },
+    { series: "order", doc_date: "2026-10-01", deleted_at: "2026-10-02T00:00:00Z" }, // ยกเลิก ไม่นับ
+  ];
+  const s = sarabanStats({ books, actions, recipients, outgoing }, now);
+  assert.deepEqual(s.months[10], { month: 11, received: 3, internal: 1, urgent: 1, out: 1, order: 0, announce: 0, memo: 1 });
+  assert.equal(s.months[9].received, 1);
+  assert.equal(s.months[9].urgent, 1);
+  assert.equal(s.months[9].order, 0);
+  assert.equal(s.received, 4);
+  assert.equal(s.internal, 1);
+  assert.equal(s.outgoing, 2);
+  assert.equal(s.decided, 2);
+  assert.equal(s.decisionHours, 14); // ค่ากลางของ 4 และ 24
+  assert.equal(s.waitingClerk, 1);
+  assert.equal(s.waitingDirector, 1);
+  assert.equal(s.oldestWaitingDays, 21);
+  assert.equal(s.recipients, 3);
+  assert.equal(s.read, 1);
+  assert.equal(s.readHours, 2);
+  assert.equal(s.unreadOver2Days, 1);
+});
+
+test("endorsementPlacement: วางที่หน้าที่กำหนด (ค่าเริ่มต้นของระบบคือหน้าสุดท้าย) และไม่เกินจำนวนหน้า", () => {
+  const page = { width: 595, height: 842 };
+  assert.equal(endorsementPlacement(page, { width: 150, height: 60 }, 4, { side: "left", pageIndex: 3 }).box.page, 3);
+  assert.equal(endorsementPlacement(page, { width: 150, height: 60 }, 2, { pageIndex: 9 }).box.page, 1);
+  assert.equal(endorsementPlacement(page, { width: 150, height: 60 }, 2).box.page, 0);
 });

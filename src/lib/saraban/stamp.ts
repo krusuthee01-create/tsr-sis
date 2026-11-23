@@ -73,9 +73,12 @@ function tokenize(para: string): { text: string; space: boolean }[] {
  * บรรทัดคำเกษียน: ข้อความ (ตัดบรรทัดตามคำไทย) แล้วตามด้วยชื่อผู้ลงนามและวันที่เลขไทย (แบบระบบเดิมของโรงเรียน)
  * position ไม่แสดงบนเอกสาร (เก็บไว้ในระบบ)
  */
+/** ความยาวบรรทัดคำเกษียน (ตัวอักษร) — ยาวกว่านี้ขึ้นบรรทัดใหม่ ให้พอดีช่องว่างท้ายหนังสือ */
+export const ENDORSEMENT_MAX_CHARS = 34;
+
 export function endorsementLines(
   e: { note: string; signerName: string; position?: string; date: string },
-  maxChars = 48,
+  maxChars = ENDORSEMENT_MAX_CHARS,
 ): string[] {
   const len = (x: string) => [...x].length;
   const lines: string[] = [];

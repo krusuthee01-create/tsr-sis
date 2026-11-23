@@ -46,7 +46,8 @@ export default async function BookPage({ params }: { params: Promise<{ id: strin
           id: profile.id,
           role: profile.saraban_role ?? "teacher",
           workGroup: profile.work_group,
-          name: [profile.prefix, profile.first_name, profile.last_name].filter(Boolean).join(" "),
+          // แบบหนังสือราชการ: คำนำหน้าติดชื่อ "นายสุธี พาทีทิน"
+          name: `${profile.prefix ?? ""}${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim(),
         }}
         staff={(staffRes.data ?? []) as StaffOption[]}
         presets={(presetRes.data ?? []) as Preset[]}
