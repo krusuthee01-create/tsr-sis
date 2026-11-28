@@ -42,9 +42,14 @@ export function normalizePrivateKey(raw: string): string {
   return key.includes("\\n") ? key.replace(/\\n/g, "\n") : key;
 }
 
-/** โหมดจำลอง (ทดสอบ/e2e) — ปิดเสมอบน production ของ Vercel แม้ตั้ง SARABAN_DRIVE_FAKE_DIR ไว้โดยพลาด */
+/** โหมดจำลอง (ทดสอบ/e2e) — ปิดเสมอบน production แม้ตั้ง SARABAN_DRIVE_FAKE_DIR ไว้โดยพลาด
+ *  (Vercel: VERCEL_ENV=production · เซิร์ฟเวอร์ของโรงเรียน: image Docker ตั้ง DEPLOY_ENV=production ไว้ในตัว) */
 export function isFakeDrive(): boolean {
-  return Boolean(process.env.SARABAN_DRIVE_FAKE_DIR) && process.env.VERCEL_ENV !== "production";
+  return (
+    Boolean(process.env.SARABAN_DRIVE_FAKE_DIR) &&
+    process.env.VERCEL_ENV !== "production" &&
+    process.env.DEPLOY_ENV !== "production"
+  );
 }
 
 function fakeDir(): string | null {

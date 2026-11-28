@@ -53,7 +53,7 @@ test("private key จาก env: ตัดเครื่องหมายค�
 });
 
 test("Drive โหมดจำลอง: ปิดบน production ของ Vercel", async () => {
-  const saved = { dir: process.env.SARABAN_DRIVE_FAKE_DIR, env: process.env.VERCEL_ENV, folder: process.env.SARABAN_DRIVE_FOLDER_ID };
+  const saved = { dir: process.env.SARABAN_DRIVE_FAKE_DIR, env: process.env.VERCEL_ENV, folder: process.env.SARABAN_DRIVE_FOLDER_ID, deploy: process.env.DEPLOY_ENV };
   try {
     delete process.env.SARABAN_DRIVE_FOLDER_ID;
     process.env.SARABAN_DRIVE_FAKE_DIR = "/tmp/x";
@@ -64,13 +64,19 @@ test("Drive โหมดจำลอง: ปิดบน production ของ Ve
     assert.equal(isFakeDrive(), true);
     process.env.VERCEL_ENV = "production";
     assert.equal(isFakeDrive(), false);
+    // เซิร์ฟเวอร์ของโรงเรียน (Docker): DEPLOY_ENV=production ปิดโหมดจำลองเช่นกัน
+    delete process.env.VERCEL_ENV;
+    process.env.DEPLOY_ENV = "production";
+    assert.equal(isFakeDrive(), false);
+    delete process.env.DEPLOY_ENV;
+    process.env.VERCEL_ENV = "production";
     clearDriveSetupCache();
     await assert.rejects(driveFolderId(), (e: unknown) => e instanceof DriveSetupError && /ยังไม่ได้เชื่อมต่อ Google Drive/.test((e as Error).message));
     delete process.env.SARABAN_DRIVE_FAKE_DIR;
     delete process.env.VERCEL_ENV;
     assert.equal(isFakeDrive(), false);
   } finally {
-    for (const [k, v] of [["SARABAN_DRIVE_FAKE_DIR", saved.dir], ["VERCEL_ENV", saved.env], ["SARABAN_DRIVE_FOLDER_ID", saved.folder]] as const) {
+    for (const [k, v] of [["SARABAN_DRIVE_FAKE_DIR", saved.dir], ["VERCEL_ENV", saved.env], ["SARABAN_DRIVE_FOLDER_ID", saved.folder], ["DEPLOY_ENV", saved.deploy]] as const) {
       if (v === undefined) delete process.env[k]; else process.env[k] = v;
     }
   }
