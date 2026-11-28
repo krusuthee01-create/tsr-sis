@@ -1,0 +1,13 @@
+# ค่าตั้ง/ค่าลับ — ส่งเข้า build ผ่าน secret เท่านั้น
+.env
+.env.*
+!.env.example
+node_modules
+.next
+.git
+.github
+.vercel
+tests
+docs
+supabase
+*.log

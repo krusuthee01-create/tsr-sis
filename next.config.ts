@@ -13,6 +13,8 @@ const proxyOrigins = (process.env.SIS_PROXY_ORIGINS ?? DEFAULT_PROXY_ORIGINS)
 
 const nextConfig: NextConfig = {
   basePath: BASE_PATH,
+  // เซิร์ฟเวอร์ของโรงเรียน (Docker · docs ของ school-platform: plan-sis-selfhost.md) — Vercel ไม่ใช้ค่านี้ จึงใช้คู่กันได้
+  output: "standalone",
   poweredByHeader: false,
   experimental: {
     optimizePackageImports: ["@phosphor-icons/react"],
