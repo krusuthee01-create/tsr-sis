@@ -15,7 +15,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # .env.production มาจาก secret (ไม่อยู่ใน layer ใด ๆ ของ image) — Next อ่านไฟล์นี้เองตอน build
-RUN --mount=type=secret,id=sis_env,target=/app/.env.production,required=true npm run build
+# Next คัดลอกไฟล์ .env* เข้า .next/standalone ด้วย → ลบทิ้งในคำสั่งเดียวกัน (ไม่ค้างใน layer ใดเลย)
+RUN --mount=type=secret,id=sis_env,target=/app/.env.production,required=true \
+    npm run build && find .next/standalone -maxdepth 1 -name '.env*' -delete
 # กันพลาด: ไฟล์ค่าตั้งต้องไม่หลุดเข้า standalone (ถ้ามี build ล้มทันที — ไม่ปล่อยค่าลับเข้า image)
 RUN if ls -A .next/standalone | grep -q '^\.env'; then echo "พบไฟล์ .env ใน standalone" >&2; exit 1; fi
 
